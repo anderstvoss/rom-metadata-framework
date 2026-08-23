@@ -2,6 +2,7 @@ from rom_metadata_framework.capability import (
     RuntimeCapability,
     RuntimeCapabilityStatus,
 )
+from rom_metadata_framework.defaults import DefaultRuntimeConfig
 from rom_metadata_framework.runtime import (
     RuntimeReport,
     build_default_runtime_report,
@@ -114,8 +115,10 @@ def test_report_runtime_preserves_reporter_order() -> None:
 
 def test_default_runtime_report_exposes_independent_capabilities() -> None:
     report = build_default_runtime_report(
-        dolphin_executable="/definitely/missing/dolphin-tool",
-        xbox_executable="/definitely/missing/xdvdfs",
+        DefaultRuntimeConfig(
+            dolphin_executable="/definitely/missing/dolphin-tool",
+            xbox_executable="/definitely/missing/xdvdfs",
+        )
     )
 
     assert tuple(item.name for item in report.capabilities) == (
@@ -131,3 +134,22 @@ def test_default_runtime_report_exposes_independent_capabilities() -> None:
     )
     assert not report.fully_ready
     assert not report.has_errors
+
+
+
+def test_default_runtime_report_uses_supplied_composition() -> None:
+    config = DefaultRuntimeConfig(
+        dolphin_executable="/definitely/missing/dolphin-tool",
+        xbox_executable="/definitely/missing/xdvdfs",
+    )
+
+    report = build_default_runtime_report(config)
+
+    assert tuple(
+        capability.name
+        for capability in report.capabilities
+    ) == (
+        "nes-normalization",
+        "dolphin-normalization",
+        "xbox-normalization",
+    )

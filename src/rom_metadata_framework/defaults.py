@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
 from .dolphin import (
@@ -14,13 +15,65 @@ from .xbox import (
 )
 
 
+@dataclass(frozen=True, slots=True)
+class DefaultRuntimeConfig:
+    """Configuration for the standard framework runtime composition."""
+
+    allow_headerless_nes: bool = False
+    dolphin_executable: str = DOLPHIN_EXECUTABLE
+    dolphin_temporary_directory: Path | None = None
+    xbox_executable: str = XDVDFS_EXECUTABLE
+    xbox_temporary_directory: Path | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.allow_headerless_nes, bool):
+            raise TypeError(
+                "allow_headerless_nes must be a boolean"
+            )
+
+        for attribute in (
+            "dolphin_executable",
+            "xbox_executable",
+        ):
+            value = getattr(self, attribute)
+
+            if not isinstance(value, str):
+                raise TypeError(
+                    f"{attribute} must be a string"
+                )
+
+            normalized = value.strip()
+
+            if not normalized:
+                raise ValueError(
+                    f"{attribute} must not be empty"
+                )
+
+            object.__setattr__(
+                self,
+                attribute,
+                normalized,
+            )
+
+        for attribute in (
+            "dolphin_temporary_directory",
+            "xbox_temporary_directory",
+        ):
+            value = getattr(self, attribute)
+
+            if value is not None:
+                object.__setattr__(
+                    self,
+                    attribute,
+                    Path(value),
+                )
+
+
+DEFAULT_RUNTIME_CONFIG = DefaultRuntimeConfig()
+
+
 def build_default_normalizer(
-    *,
-    allow_headerless_nes: bool = False,
-    dolphin_executable: str = DOLPHIN_EXECUTABLE,
-    dolphin_temporary_directory: Path | None = None,
-    xbox_executable: str = XDVDFS_EXECUTABLE,
-    xbox_temporary_directory: Path | None = None,
+    config: DefaultRuntimeConfig = DEFAULT_RUNTIME_CONFIG,
 ) -> CompositeNormalizer:
     """Build the standard normalized-content adapter router.
 
@@ -28,18 +81,27 @@ def build_default_normalizer(
     filename extension alone is not authoritative content evidence.
     """
 
+    if not isinstance(config, DefaultRuntimeConfig):
+        raise TypeError(
+            "config must be DefaultRuntimeConfig"
+        )
+
     return CompositeNormalizer(
         (
             NesAdapter(
-                allow_headerless=allow_headerless_nes,
+                allow_headerless=config.allow_headerless_nes,
             ),
             DolphinAdapter(
-                executable=dolphin_executable,
-                temporary_directory=dolphin_temporary_directory,
+                executable=config.dolphin_executable,
+                temporary_directory=(
+                    config.dolphin_temporary_directory
+                ),
             ),
             XboxAdapter(
-                executable=xbox_executable,
-                temporary_directory=xbox_temporary_directory,
+                executable=config.xbox_executable,
+                temporary_directory=(
+                    config.xbox_temporary_directory
+                ),
             ),
         )
     )

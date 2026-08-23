@@ -1,6 +1,11 @@
+from dataclasses import FrozenInstanceError
 from pathlib import Path
 
+import pytest
+
 from rom_metadata_framework.defaults import (
+    DEFAULT_RUNTIME_CONFIG,
+    DefaultRuntimeConfig,
     build_default_normalizer,
 )
 from rom_metadata_framework.dolphin import DolphinAdapter
@@ -35,7 +40,9 @@ def test_default_normalizer_keeps_headerless_nes_disabled() -> None:
 
 def test_default_normalizer_can_enable_headerless_nes() -> None:
     router = build_default_normalizer(
-        allow_headerless_nes=True,
+        DefaultRuntimeConfig(
+            allow_headerless_nes=True,
+        )
     )
 
     nes = router.normalizers[0]
@@ -50,8 +57,10 @@ def test_default_normalizer_passes_dolphin_runtime_configuration(
     executable = "/example/dolphin-tool"
 
     router = build_default_normalizer(
-        dolphin_executable=executable,
-        dolphin_temporary_directory=tmp_path,
+        DefaultRuntimeConfig(
+            dolphin_executable=executable,
+            dolphin_temporary_directory=tmp_path,
+        )
     )
 
     dolphin = router.normalizers[1]
@@ -72,8 +81,10 @@ def test_default_router_routes_headered_nes_without_opt_in(
     path.write_bytes(bytes(header) + (b"P" * (16 * 1024)))
 
     router = build_default_normalizer(
-        dolphin_executable="/definitely/missing/dolphin-tool",
-        xbox_executable="/definitely/missing/xdvdfs",
+        DefaultRuntimeConfig(
+            dolphin_executable="/definitely/missing/dolphin-tool",
+            xbox_executable="/definitely/missing/xdvdfs",
+        )
     )
 
     matches = router.supporting_normalizers(path)
@@ -88,8 +99,10 @@ def test_default_router_does_not_route_headerless_nes_without_opt_in(
     path.write_bytes(b"headerless-content")
 
     router = build_default_normalizer(
-        dolphin_executable="/definitely/missing/dolphin-tool",
-        xbox_executable="/definitely/missing/xdvdfs",
+        DefaultRuntimeConfig(
+            dolphin_executable="/definitely/missing/dolphin-tool",
+            xbox_executable="/definitely/missing/xdvdfs",
+        )
     )
 
     assert router.supporting_normalizers(path) == ()
@@ -102,9 +115,11 @@ def test_default_router_routes_headerless_nes_with_opt_in(
     path.write_bytes(b"headerless-content")
 
     router = build_default_normalizer(
-        allow_headerless_nes=True,
-        dolphin_executable="/definitely/missing/dolphin-tool",
-        xbox_executable="/definitely/missing/xdvdfs",
+        DefaultRuntimeConfig(
+            allow_headerless_nes=True,
+            dolphin_executable="/definitely/missing/dolphin-tool",
+            xbox_executable="/definitely/missing/xdvdfs",
+        )
     )
 
     matches = router.supporting_normalizers(path)
@@ -118,8 +133,10 @@ def test_default_normalizer_passes_xbox_runtime_configuration(
     executable = "/example/xdvdfs"
 
     router = build_default_normalizer(
-        xbox_executable=executable,
-        xbox_temporary_directory=tmp_path,
+        DefaultRuntimeConfig(
+            xbox_executable=executable,
+            xbox_temporary_directory=tmp_path,
+        )
     )
 
     xbox = router.normalizers[2]
@@ -140,8 +157,10 @@ def test_missing_external_adapters_do_not_block_supported_nes(
     path.write_bytes(bytes(header) + (b"P" * (16 * 1024)))
 
     router = build_default_normalizer(
-        dolphin_executable="/definitely/missing/dolphin-tool",
-        xbox_executable="/definitely/missing/xdvdfs",
+        DefaultRuntimeConfig(
+            dolphin_executable="/definitely/missing/dolphin-tool",
+            xbox_executable="/definitely/missing/xdvdfs",
+        )
     )
 
     probes = {probe.normalizer: probe for _, probe in router.probe_normalizers(path)}
@@ -151,3 +170,56 @@ def test_missing_external_adapters_do_not_block_supported_nes(
     assert probes["xbox"].terminal_failure
 
     assert router.select(path).name == "nes"
+
+
+
+def test_default_runtime_config_matches_framework_defaults() -> None:
+    assert DEFAULT_RUNTIME_CONFIG == DefaultRuntimeConfig()
+    assert not DEFAULT_RUNTIME_CONFIG.allow_headerless_nes
+
+
+def test_default_runtime_config_normalizes_values(
+    tmp_path: Path,
+) -> None:
+    config = DefaultRuntimeConfig(
+        dolphin_executable="  dolphin-custom  ",
+        dolphin_temporary_directory=tmp_path,
+        xbox_executable="  xdvdfs-custom  ",
+        xbox_temporary_directory=tmp_path,
+    )
+
+    assert config.dolphin_executable == "dolphin-custom"
+    assert config.dolphin_temporary_directory == tmp_path
+    assert config.xbox_executable == "xdvdfs-custom"
+    assert config.xbox_temporary_directory == tmp_path
+
+
+def test_default_runtime_config_is_frozen() -> None:
+    config = DefaultRuntimeConfig()
+
+    with pytest.raises(FrozenInstanceError):
+        config.allow_headerless_nes = True
+
+
+@pytest.mark.parametrize(
+    "field",
+    (
+        "dolphin_executable",
+        "xbox_executable",
+    ),
+)
+def test_default_runtime_config_rejects_empty_executable(
+    field: str,
+) -> None:
+    with pytest.raises(ValueError):
+        DefaultRuntimeConfig(
+            **{field: " "}
+        )
+
+
+def test_default_normalizer_rejects_invalid_config() -> None:
+    with pytest.raises(
+        TypeError,
+        match="DefaultRuntimeConfig",
+    ):
+        build_default_normalizer(None)

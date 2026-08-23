@@ -27,7 +27,7 @@ By default, the framework uses:
 
 The backend layer resolves configured executable names through the process
 `PATH`. Callers may instead supply another executable name or path through the
-adapter, default-normalizer, or runtime-report configuration APIs.
+adapter or through the shared default-runtime configuration.
 
 Backend processes are invoked directly without a command shell. Standard
 output, standard error, and the return code are captured. Backend executions
@@ -264,42 +264,48 @@ metadata.
 As with Dolphin, callers may optionally provide an existing directory under
 which temporary workspaces are created.
 
-## Default normalizer configuration
+## Default runtime configuration
 
-The standard normalizer can be built with custom backend executables and
-temporary-directory roots:
+The standard normalizer and its runtime report share one immutable
+`DefaultRuntimeConfig`. This keeps runtime composition in one place as the
+standard adapter set grows.
 
 ```python
-from rom_metadata_framework.defaults import build_default_normalizer
+from rom_metadata_framework.defaults import (
+    DefaultRuntimeConfig,
+    build_default_normalizer,
+)
 
-normalizer = build_default_normalizer(
+config = DefaultRuntimeConfig(
     dolphin_executable="dolphin-tool",
     dolphin_temporary_directory=None,
     xbox_executable="xdvdfs",
     xbox_temporary_directory=None,
 )
+
+normalizer = build_default_normalizer(config)
 ```
 
-Headerless NES normalization remains disabled by default because a filename
-extension alone is not considered authoritative content evidence.
+`DefaultRuntimeConfig()` uses the framework defaults. Headerless NES
+normalization remains disabled by default because a filename extension alone
+is not authoritative content evidence. It can be enabled explicitly with
+`allow_headerless_nes=True`.
 
-## Runtime inspection
-
-A framework-level report for the standard normalizer is available through
-`build_default_runtime_report`:
+The same configuration can be used to inspect the exact runtime composition
+before processing files:
 
 ```python
 from rom_metadata_framework.runtime import build_default_runtime_report
 
-report = build_default_runtime_report()
+report = build_default_runtime_report(config)
 
 for capability in report.capabilities:
-    print(
-        capability.name,
-        capability.status,
-        capability.reason,
-    )
+    print(capability.name, capability.status)
 ```
+
+Calling either factory without an argument uses `DEFAULT_RUNTIME_CONFIG`, so
+the default normalizer and default runtime report describe the same standard
+composition.
 
 `fully_ready` is true only when every reported capability is explicitly ready.
 A missing optional backend therefore makes the aggregate report not fully
