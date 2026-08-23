@@ -132,6 +132,19 @@ def test_gamecube_disc_identity(tmp_path: Path) -> None:
         ]
         == HASHES["rchash"]
     )
+    representation = identity.physical_representation
+
+    assert representation is not None
+    assert representation.kind == "disc-image"
+    assert representation.format == "rvz"
+    assert (
+        representation.metadata["block_size"]
+        == "131072"
+    )
+
+    # Canonical normalized content is a disc; the source remains RVZ.
+    assert identity.content.kind == "disc"
+
     assert identity.container_metadata["block_size"] == "131072"
     assert (
         identity.container_metadata["compression_method"]
