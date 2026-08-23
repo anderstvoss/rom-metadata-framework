@@ -2,16 +2,14 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from .capability import (
     RuntimeCapability,
-    RuntimeCapabilityStatus,
 )
-from .content import NormalizedContentIdentity
 from .normalization import (
+    NormalizationResult,
     NormalizerProbe,
-    NormalizerProbeStatus,
 )
 
 
@@ -77,29 +75,25 @@ class AmbiguousNormalizerError(NormalizerRoutingError):
         )
 
 
-class NormalizedResult(Protocol):
-    """Result exposing normalized content identity."""
-
-    @property
-    def content(self) -> NormalizedContentIdentity:
-        """Normalized content represented by the source."""
-        ...
-
-
+@runtime_checkable
 class RoutedNormalizer(Protocol):
-    """Normalizer that can conservatively claim supported files."""
+    """Complete contract for a conservatively routed normalizer."""
 
     @property
     def name(self) -> str:
         """Stable normalizer name."""
         ...
 
-    def supports(self, path: Path) -> bool:
-        """Return whether this normalizer claims the path."""
+    def runtime_capability(self) -> RuntimeCapability:
+        """Report whether normalization dependencies are ready."""
         ...
 
-    def identify(self, path: Path) -> NormalizedResult:
-        """Return normalized content represented by the path."""
+    def probe(self, path: Path) -> NormalizerProbe:
+        """Classify whether this normalizer can safely handle a path."""
+        ...
+
+    def identify(self, path: Path) -> NormalizationResult:
+        """Return complete normalization evidence for the path."""
         ...
 
 
@@ -112,7 +106,18 @@ class CompositeNormalizer:
         self,
         normalizers: Sequence[RoutedNormalizer],
     ) -> None:
-        self.normalizers = tuple(normalizers)
+        candidates = tuple(normalizers)
+
+        if any(
+            not isinstance(normalizer, RoutedNormalizer)
+            for normalizer in candidates
+        ):
+            raise TypeError(
+                "all normalizers must implement the "
+                "RoutedNormalizer contract"
+            )
+
+        self.normalizers = candidates
 
         names = [
             normalizer.name.strip()
@@ -134,30 +139,10 @@ class CompositeNormalizer:
     ) -> tuple[RuntimeCapability, ...]:
         """Report constituent runtime capabilities in registration order."""
 
-        capabilities = []
-
-        for normalizer in self.normalizers:
-            capability_method = getattr(
-                normalizer,
-                "runtime_capability",
-                None,
-            )
-
-            if callable(capability_method):
-                capability = capability_method()
-            else:
-                capability = RuntimeCapability(
-                    name=f"{normalizer.name}-normalization",
-                    status=RuntimeCapabilityStatus.UNKNOWN,
-                    reason=(
-                        "normalizer does not expose runtime "
-                        "capability information"
-                    ),
-                )
-
-            capabilities.append(capability)
-
-        return tuple(capabilities)
+        return tuple(
+            normalizer.runtime_capability()
+            for normalizer in self.normalizers
+        )
 
     def probe_normalizers(
         self,
@@ -172,24 +157,11 @@ class CompositeNormalizer:
         results = []
 
         for normalizer in self.normalizers:
-            probe_method = getattr(
-                normalizer,
-                "probe",
-                None,
-            )
+            probe = normalizer.probe(path)
 
-            if callable(probe_method):
-                probe = probe_method(path)
-            else:
-                supported = normalizer.supports(path)
-
-                probe = NormalizerProbe(
-                    normalizer=normalizer.name,
-                    status=(
-                        NormalizerProbeStatus.SUPPORTED
-                        if supported
-                        else NormalizerProbeStatus.UNSUPPORTED
-                    ),
+            if not isinstance(probe, NormalizerProbe):
+                raise TypeError(
+                    "normalizer probe() must return NormalizerProbe"
                 )
 
             if probe.normalizer != normalizer.name.strip():
@@ -269,7 +241,7 @@ class CompositeNormalizer:
     def identify(
         self,
         path: Path,
-    ) -> NormalizedResult:
+    ) -> NormalizationResult:
         """Normalize through the only adapter safely claiming the source."""
 
         path = Path(path)

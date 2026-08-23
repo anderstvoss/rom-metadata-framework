@@ -4,6 +4,20 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import Enum
 from types import MappingProxyType
+from typing import Protocol, runtime_checkable
+
+from .content import NormalizedContentIdentity
+from .local_metadata import LocalContentMetadata
+from .representation import RepresentationIdentity
+
+
+@runtime_checkable
+class NormalizationResult(Protocol):
+    """Complete evidence returned by a normalization adapter."""
+
+    content: NormalizedContentIdentity
+    local_metadata: LocalContentMetadata | None
+    physical_representation: RepresentationIdentity | None
 
 
 class NormalizerProbeStatus(str, Enum):
