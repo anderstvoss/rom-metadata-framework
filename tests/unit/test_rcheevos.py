@@ -162,3 +162,21 @@ def test_rcheevos_adapter_supports_regular_files(
 
     assert adapter.supports(rom) is True
     assert adapter.supports(tmp_path / "missing.sfc") is False
+
+
+def test_adapter_for_platform_uses_canonical_name() -> None:
+    from rom_metadata_framework.rcheevos import adapter_for_platform
+
+    adapter = adapter_for_platform("super-nintendo")
+
+    assert adapter.console_id == 3
+    assert adapter.platform == "snes"
+
+
+def test_adapter_for_platform_accepts_common_alias() -> None:
+    from rom_metadata_framework.rcheevos import adapter_for_platform
+
+    adapter = adapter_for_platform("gba")
+
+    assert adapter.console_id == 5
+    assert adapter.platform == "game-boy-advance"
