@@ -1,130 +1,319 @@
 # Architecture
 
-## Overview
+## Purpose
 
-The framework separates ROM or disc-image identification from metadata
-resolution.
+ROM Metadata Framework separates the identity of a physical ROM or disc image
+from the identity of the game release it represents.
 
-The core flow is:
+The framework deliberately keeps these concepts distinct:
 
-~~~text
-input file
-   |
-   v
-identification adapter
-   |
-   v
-normalized identity
-   |
-   v
-metadata resolver
-   |
-   v
-resolved title metadata
-~~~
+1. physical-file identity;
+2. platform evidence;
+3. physical representation;
+4. normalized or canonical content;
+5. canonical game/release identity;
+6. local structural metadata;
+7. provider-supplied release metadata;
+8. verification;
+9. naming and file-operation policy.
 
-## Identification adapters
+This separation prevents metadata enrichment, container details, or provider
+ordering from silently changing identity or trust decisions.
 
-Identification adapters perform platform- or format-specific inspection.
+## Identification pipeline
 
-An adapter may produce fields such as:
+The high-level identification flow is:
 
 ~~~text
-platform
-format
-hashes
-serial
-product_code
-title_id
-media_metadata
-adapter
-adapter_version
+physical file
+   |
+   +--> generic whole-file hashes ----------------------+
+   |                                                    |
+   +--> platform detectors                              |
+   |                                                    |
+   +--> physical provider lookup -----------------------+
+   |                                                    |
+   +--> optional content normalizer                     |
+            |                                           |
+            +--> physical representation                |
+            +--> local structural metadata              |
+            +--> normalized content hashes              |
+                         |                               |
+                         +--> normalized provider lookup+
+                                                         |
+                                                         v
+                                              release reconciliation
+                                                         |
+                                                         v
+                                              canonical release identity
 ~~~
 
-Different platforms may require different identification logic. The framework
-must not assume that one hashing strategy or identifier type is sufficient for
-every system.
+The physical lookup is intentionally performed before normalization.
 
-Adapters may use:
+Normalization is therefore not a prerequisite for provider lookup. It is an
+additional evidence path used when a format can be reduced to a more canonical
+content representation.
 
-- original project code;
-- external upstream command-line tools;
-- isolated helper programs;
-- derived implementations where upstream licensing permits redistribution.
+## Physical-file identity
 
-Third-party-derived implementations must remain behind a defined adapter
-boundary and preserve required attribution and license information.
+`RomIdentity` represents facts about the exact source file presented to the
+framework.
 
-## Normalized identity
+Its generic CRC32, MD5, SHA1, and SHA256 values are hashes of the physical file
+bytes.
 
-Identification results are converted into a common internal representation.
+Physical hashes must not be replaced with normalized hashes or specialized
+platform identifiers.
 
-This normalized identity is the contract between identification adapters and
-metadata resolvers.
+A provider may identify a release directly from physical-file identity before
+any normalization occurs.
 
-Metadata resolvers must not depend on the implementation of the adapter that
-produced the identity.
+## Platform detection
 
-## Metadata resolvers
+Platform detection is independent from release lookup.
 
-Metadata resolvers use normalized identity fields to locate human-readable
-game and release information.
+A `PlatformDetector` returns one or more `PlatformCandidate` values, each with
+confidence and provenance-bearing `PlatformEvidence`.
 
-Potential resolver inputs include:
+The standard runtime combines independent NES, Dolphin, and original-Xbox
+detectors with `CompositePlatformDetector`.
 
-~~~text
-SHA-1
-MD5
-CRC
-serial
-product code
-title ID
-platform
-region
+When several detectors identify the same canonical platform, their evidence is
+combined and the highest confidence is retained. Distinct equally ranked
+platform candidates remain ambiguous.
+
+Provider platform evidence is reconciled with local detector evidence later in
+the identification pipeline.
+
+## Physical representation
+
+`RepresentationIdentity` describes how content is physically represented by the
+source file.
+
+Examples include:
+
+- an iNES or NES 2.0 cartridge representation;
+- an RVZ or ISO disc-image representation;
+- an original-Xbox XISO or full-disc representation.
+
+Representation is deliberately separate from normalized content. Converting or
+reconstructing canonical content does not change what representation the
+original source used.
+
+## Normalized content
+
+`NormalizedContentIdentity` represents canonicalized content derived from the
+physical source.
+
+Depending on platform and format, normalization may:
+
+- remove representation-specific bytes;
+- reconstruct a canonical disc image;
+- derive a filesystem-level content checksum;
+- preserve specialized platform identifiers.
+
+The normalized identity has its own hashes and identifiers. These must not
+replace the physical hashes stored in `RomIdentity`.
+
+The standard normalizer currently supports:
+
+- NES directly in Python;
+- GameCube/Wii using `dolphin-tool`;
+- original Xbox using `xdvdfs`.
+
+See [Runtime Backends](runtime-backends.md) for backend contracts and failure
+semantics.
+
+## Local structural metadata
+
+Normalization may also return `LocalContentMetadata`.
+
+This represents trustworthy facts extracted directly from the represented
+artifact, such as:
+
+- internal titles;
+- product or title identifiers;
+- revisions;
+- regions;
+- languages;
+- executable versions;
+- disc numbering;
+- hardware fields;
+- build or certificate timestamps.
+
+Local metadata is not provider metadata.
+
+It does not participate in provider ordering, canonical release selection,
+verification, or naming unless a separate policy explicitly defines such use.
+
+## Release lookup and reconciliation
+
+Release lookup has two independent opportunities:
+
+1. lookup from physical-file identity;
+2. lookup from normalized-content identity, when normalization succeeds.
+
+`identify_file()` preserves both observations as `physical_match` and
+`normalized_match`.
+
+`ReleaseReconciliation` compares them.
+
+Compatible observations may yield a canonical release identity. Conflicting
+release or platform evidence blocks implicit canonical selection rather than
+silently choosing one path.
+
+This design allows exact physical representations to match catalogues when
+possible while retaining a normalized fallback for alternate representations.
+
+## Canonical release identity
+
+`CanonicalReleaseIdentity` is provider-independent release identity.
+
+It contains the release name, canonical platform, source identifiers,
+identification evidence, catalogue evidence, and conflicts.
+
+It is distinct from descriptive release metadata.
+
+A release may therefore be identified even when rich provider metadata has not
+yet been collected.
+
+## Provider metadata enrichment
+
+Metadata enrichment begins only after canonical release reconciliation.
+
+`collect_identification_metadata()` receives an `IdentificationResult` and a
+`MetadataProviderCollection`.
+
+Each provider receives the already selected canonical release identity.
+
+Provider results remain independent `MetadataProviderResult` observations.
+Registration order is execution order only and does not define precedence.
+
+Local metadata and provider-supplied `ReleaseMetadata` remain structurally
+separate.
+
+See [Metadata Selection Policy](metadata-selection-policy.md).
+
+## Metadata reconciliation
+
+`MetadataReconciliationReport` compares fields whose local and provider
+semantics are sufficiently compatible.
+
+Current comparisons include:
+
+- titles;
+- developers;
+- publishers;
+- regions;
+- languages;
+- player counts;
+- multiplayer features;
+- identifiers with matching normalized namespaces and exact opaque values.
+
+Reconciliation is diagnostic only.
+
+It does not:
+
+- select a preferred metadata value;
+- rank providers;
+- alter canonical identity;
+- alter verification;
+- alter naming.
+
+## Verification
+
+Verification is derived from canonical release and catalogue evidence.
+
+The default policy recognizes trusted catalogue authorities and requires strong
+content evidence before establishing known-good status.
+
+Physical and normalized matches are verified independently.
+
+This allows the framework to distinguish:
+
+- trust in the exact physical representation;
+- trust in normalized canonical content.
+
+Known-bad evidence and unresolved conflicts block safe canonical naming.
+
+## Naming and file operations
+
+`NamingPolicy` derives filenames from `CanonicalReleaseIdentity`, not from
+provider metadata or local metadata.
+
+`plan_rename()` is non-mutating and returns a `RenamePlan`.
+
+The default operation is `copy`.
+
+Replacing the original file is an explicit opt-in operation.
+
+A canonical name is considered safe only when identification verification
+supports it and unresolved conflicts are absent.
+
+## Runtime composition
+
+The standard application composition is built from one
+`DefaultRuntimeConfig`.
+
+~~~python
+from rom_metadata_framework.defaults import (
+    DefaultRuntimeConfig,
+    build_default_detector,
+    build_default_normalizer,
+)
+from rom_metadata_framework.playmatch import PlaymatchResolver
+
+config = DefaultRuntimeConfig()
+
+detector = build_default_detector(config)
+normalizer = build_default_normalizer(config)
+resolver = PlaymatchResolver()
 ~~~
 
-Resolvers may use local databases, downloadable datasets, or remote APIs.
+Detector and normalizer construction share backend executable configuration so
+Dolphin and xdvdfs use one consistent runtime definition.
 
-Multiple resolvers may support the same platform.
+Runtime capability reporting is separately available through
+`build_default_runtime_report()`.
 
-Metadata provider results remain independent evidence. Provider registration
-order does not establish precedence, and metadata reconciliation does not select
-preferred values. Consumers requiring a single metadata value must define an
-explicit consumer-specific policy.
+## Error boundaries
 
-See `docs/metadata-selection-policy.md` for the framework-wide non-selection
-contract.
+The framework distinguishes contract violations from operational failures.
 
-## Licensing boundary
+Examples include:
 
-The core framework and each adapter are separate implementation boundaries for
-provenance purposes.
+- backend unavailable;
+- backend timeout or execution failure;
+- malformed backend response;
+- unsupported source format;
+- unsafe normalization;
+- invalid provider result;
+- invalid normalizer result.
 
-Code copied, translated, adapted, or substantially derived from another
-project must not be introduced until its license and redistribution
-requirements have been reviewed.
+An unavailable optional backend must not prevent another independent adapter
+from positively handling a source.
 
-Every populated third-party-derived adapter must record:
+## Public API boundary
 
-- upstream project;
-- upstream repository;
-- exact source revision where practical;
-- upstream license;
-- files or functions used;
-- modifications made locally;
-- required attribution.
+The stable consumer-facing façade is exported from `rom_metadata_framework`.
 
-Where direct code reuse would create incompatible licensing requirements for
-the core framework, prefer an external process boundary rather than direct
-linking or source incorporation.
+Concrete backend adapters, provider implementations, default composition
+factories, and lower-level routing helpers remain available from their defining
+modules but are not currently part of the root stable API.
 
-## Test data
+This lets the project refine application composition before committing every
+implementation class to long-term root-level compatibility.
 
-Public tests must use:
+## Test and provenance boundaries
 
-- synthetic fixtures;
-- original fixtures created for this project; or
-- freely redistributable test data with documented provenance.
+Public tests use synthetic, original, or freely redistributable fixtures.
 
-Commercial ROMs, disc images, extracted copyrighted game binaries, and private
-library contents must not be committed.
+Commercial ROMs, disc images, extracted copyrighted binaries, credentials,
+private infrastructure details, and local validation corpora must not enter
+repository history.
+
+Third-party integrations must preserve provenance and licensing requirements.
+See:
+
+- [Licensing Policy](LICENSING.md)
+- [Third-Party Provenance Policy](THIRD_PARTY_PROVENANCE.md)

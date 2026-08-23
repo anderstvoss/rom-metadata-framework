@@ -46,6 +46,36 @@ See [Runtime Backends](docs/runtime-backends.md) for executable discovery,
 capability reporting, probe semantics, temporary storage, and the command
 contracts used by the framework.
 
+## Quick start
+
+The standard application composition combines platform detection, Playmatch
+release lookup, and optional content normalization:
+
+```python
+from pathlib import Path
+
+from rom_metadata_framework import identify_file
+from rom_metadata_framework.defaults import (
+    DefaultRuntimeConfig,
+    build_default_detector,
+    build_default_normalizer,
+)
+from rom_metadata_framework.playmatch import PlaymatchResolver
+
+config = DefaultRuntimeConfig()
+
+result = identify_file(
+    Path("game.rom"),
+    detector=build_default_detector(config),
+    resolver=PlaymatchResolver(),
+    normalizer=build_default_normalizer(config),
+)
+```
+
+See [Getting Started](docs/getting-started.md) and the runnable programs in
+[`examples/`](examples/) for runtime capability inspection, identification,
+verification, and canonical naming.
+
 ## Development setup
 
 The repository uses `uv` for the locked development environment.
@@ -151,6 +181,7 @@ if enriched.has_metadata_divergence:
 
 ## Documentation
 
+- [Getting Started](docs/getting-started.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Runtime Backends](docs/runtime-backends.md)
 - [Metadata Selection Policy](docs/metadata-selection-policy.md)

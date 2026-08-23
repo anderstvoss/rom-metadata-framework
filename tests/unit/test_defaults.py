@@ -172,7 +172,6 @@ def test_missing_external_adapters_do_not_block_supported_nes(
     assert router.select(path).name == "nes"
 
 
-
 def test_default_runtime_config_matches_framework_defaults() -> None:
     assert DEFAULT_RUNTIME_CONFIG == DefaultRuntimeConfig()
     assert not DEFAULT_RUNTIME_CONFIG.allow_headerless_nes
@@ -212,9 +211,7 @@ def test_default_runtime_config_rejects_empty_executable(
     field: str,
 ) -> None:
     with pytest.raises(ValueError):
-        DefaultRuntimeConfig(
-            **{field: " "}
-        )
+        DefaultRuntimeConfig(**{field: " "})
 
 
 def test_default_normalizer_rejects_invalid_config() -> None:
@@ -223,3 +220,49 @@ def test_default_normalizer_rejects_invalid_config() -> None:
         match="DefaultRuntimeConfig",
     ):
         build_default_normalizer(None)
+
+
+def test_default_detector_registers_nes_dolphin_xbox() -> None:
+    from rom_metadata_framework.defaults import build_default_detector
+    from rom_metadata_framework.dolphin import DolphinPlatformDetector
+    from rom_metadata_framework.nes import NesPlatformDetector
+    from rom_metadata_framework.xbox import XboxPlatformDetector
+
+    detector = build_default_detector()
+
+    assert len(detector.detectors) == 3
+    nes, dolphin, xbox = detector.detectors
+    assert isinstance(nes, NesPlatformDetector)
+    assert isinstance(dolphin, DolphinPlatformDetector)
+    assert isinstance(xbox, XboxPlatformDetector)
+
+
+def test_default_detector_passes_backend_configuration() -> None:
+    from rom_metadata_framework.defaults import (
+        DefaultRuntimeConfig,
+        build_default_detector,
+    )
+    from rom_metadata_framework.dolphin import DolphinPlatformDetector
+    from rom_metadata_framework.xbox import XboxPlatformDetector
+
+    detector = build_default_detector(
+        DefaultRuntimeConfig(
+            dolphin_executable="/example/dolphin-tool",
+            xbox_executable="/example/xdvdfs",
+        )
+    )
+
+    dolphin = detector.detectors[1]
+    xbox = detector.detectors[2]
+
+    assert isinstance(dolphin, DolphinPlatformDetector)
+    assert isinstance(xbox, XboxPlatformDetector)
+    assert dolphin.adapter.backend.executable == "/example/dolphin-tool"
+    assert xbox.adapter.backend.executable == "/example/xdvdfs"
+
+
+def test_default_detector_rejects_invalid_config() -> None:
+    from rom_metadata_framework.defaults import build_default_detector
+
+    with pytest.raises(TypeError, match="DefaultRuntimeConfig"):
+        build_default_detector(None)

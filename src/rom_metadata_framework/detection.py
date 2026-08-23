@@ -124,3 +124,46 @@ class PlatformDetector(Protocol):
     def detect(self, path: Path) -> PlatformDetection:
         """Inspect a file and return zero or more platform candidates."""
         ...
+
+
+@dataclass(frozen=True, slots=True)
+class CompositePlatformDetector:
+    """Combine platform evidence from independent detectors."""
+
+    detectors: tuple[PlatformDetector, ...]
+
+    @property
+    def name(self) -> str:
+        return "composite"
+
+    def detect(self, path: Path) -> PlatformDetection:
+        """Run every detector and combine candidates by platform."""
+
+        path = Path(path)
+        candidates: dict[str, PlatformCandidate] = {}
+
+        for detector in self.detectors:
+            detection = detector.detect(path)
+
+            for candidate in detection.candidates:
+                existing = candidates.get(candidate.platform)
+
+                if existing is None:
+                    candidates[candidate.platform] = candidate
+                    continue
+
+                candidates[candidate.platform] = PlatformCandidate(
+                    platform=candidate.platform,
+                    confidence=max(
+                        existing.confidence,
+                        candidate.confidence,
+                    ),
+                    evidence=(
+                        *existing.evidence,
+                        *candidate.evidence,
+                    ),
+                )
+
+        return PlatformDetection(
+            candidates=tuple(candidates.values()),
+        )
