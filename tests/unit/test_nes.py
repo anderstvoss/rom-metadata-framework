@@ -1,0 +1,326 @@
+from pathlib import Path
+
+import pytest
+
+from rom_metadata_framework.nes import (
+    NES_MAGIC,
+    NesAdapter,
+    NesFormatError,
+)
+
+
+def make_header(
+    *,
+    prg_units: int = 1,
+    chr_units: int = 1,
+    nes2: bool = True,
+    mapper: int = 0,
+    submapper: int = 0,
+    trainer: bool = False,
+) -> bytes:
+    header = bytearray(16)
+    header[:4] = NES_MAGIC
+
+    header[4] = prg_units & 0xFF
+    header[5] = chr_units & 0xFF
+
+    header[6] = (
+        ((mapper & 0x0F) << 4)
+        | (0x04 if trainer else 0)
+    )
+
+    header[7] = mapper & 0xF0
+
+    if nes2:
+        header[7] |= 0x08
+        header[8] = (
+            ((submapper & 0x0F) << 4)
+            | ((mapper >> 8) & 0x0F)
+        )
+        header[9] = (
+            ((chr_units >> 8) & 0x0F) << 4
+        ) | (
+            (prg_units >> 8) & 0x0F
+        )
+
+    return bytes(header)
+
+
+def test_nes2_normalizes_prg_and_chr(
+    tmp_path: Path,
+) -> None:
+    prg = b"P" * (16 * 1024)
+    chr_data = b"C" * (8 * 1024)
+
+    image = tmp_path / "example.nes"
+    image.write_bytes(
+        make_header(
+            mapper=4,
+            submapper=2,
+        )
+        + prg
+        + chr_data
+    )
+
+    headerless = tmp_path / "example.unh"
+    headerless.write_bytes(
+        prg + chr_data
+    )
+
+    headered_identity = NesAdapter().identify(
+        image
+    )
+    headerless_identity = NesAdapter(
+        allow_headerless=True,
+    ).identify(
+        headerless
+    )
+
+    assert headered_identity.representation == "nes2"
+    assert (
+        headered_identity.content.hashes
+        == headerless_identity.content.hashes
+    )
+    assert (
+        headered_identity.content.metadata[
+            "normalization"
+        ]
+        == "prg+chr"
+    )
+    assert (
+        headered_identity.header_metadata[
+            "mapper"
+        ]
+        == "4"
+    )
+    assert (
+        headered_identity.header_metadata[
+            "submapper"
+        ]
+        == "2"
+    )
+
+
+def test_ines_is_supported(
+    tmp_path: Path,
+) -> None:
+    image = tmp_path / "example.nes"
+
+    image.write_bytes(
+        make_header(
+            nes2=False,
+        )
+        + (b"P" * (16 * 1024))
+        + (b"C" * (8 * 1024))
+    )
+
+    identity = NesAdapter().identify(
+        image
+    )
+
+    assert identity.representation == "ines"
+    assert identity.content.kind == "cartridge"
+
+
+def test_headerless_requires_explicit_opt_in(
+    tmp_path: Path,
+) -> None:
+    image = tmp_path / "example.nes"
+    image.write_bytes(b"headerless-data")
+
+    assert NesAdapter().supports(
+        image
+    ) is False
+
+    with pytest.raises(NesFormatError):
+        NesAdapter().identify(image)
+
+    assert NesAdapter(
+        allow_headerless=True,
+    ).supports(image) is True
+
+
+def test_trainer_is_rejected_for_now(
+    tmp_path: Path,
+) -> None:
+    image = tmp_path / "trainer.nes"
+
+    image.write_bytes(
+        make_header(
+            trainer=True,
+        )
+        + (b"T" * 512)
+        + (b"P" * (16 * 1024))
+        + (b"C" * (8 * 1024))
+    )
+
+    with pytest.raises(
+        NesFormatError,
+        match="trainer",
+    ):
+        NesAdapter().identify(image)
+
+
+def test_truncated_rom_is_rejected(
+    tmp_path: Path,
+) -> None:
+    image = tmp_path / "short.nes"
+
+    image.write_bytes(
+        make_header()
+        + b"too-short"
+    )
+
+    with pytest.raises(
+        NesFormatError,
+        match="truncated",
+    ):
+        NesAdapter().identify(image)
+
+
+def test_trailing_data_is_rejected(
+    tmp_path: Path,
+) -> None:
+    image = tmp_path / "trailing.nes"
+
+    image.write_bytes(
+        make_header()
+        + (b"P" * (16 * 1024))
+        + (b"C" * (8 * 1024))
+        + b"extra"
+    )
+
+    with pytest.raises(
+        NesFormatError,
+        match="trailing",
+    ):
+        NesAdapter().identify(image)
+
+
+def test_nes2_exponent_multiplier_size(
+    tmp_path: Path,
+) -> None:
+    header = bytearray(
+        make_header(
+            prg_units=0,
+            chr_units=0,
+        )
+    )
+
+    # NES 2.0 exponent/multiplier encoding:
+    # 2^14 * 1 = 16 KiB PRG-ROM.
+    header[4] = 14 << 2
+    header[9] = (
+        header[9] & 0xF0
+    ) | 0x0F
+
+    prg = b"P" * (16 * 1024)
+
+    image = tmp_path / "exponent.nes"
+    image.write_bytes(
+        bytes(header) + prg
+    )
+
+    identity = NesAdapter().identify(
+        image
+    )
+
+    assert (
+        identity.content.metadata[
+            "prg_rom_size"
+        ]
+        == str(16 * 1024)
+    )
+    assert (
+        identity.content.metadata[
+            "chr_rom_size"
+        ]
+        == "0"
+    )
+
+
+def test_nes_platform_detector_detects_nes2(
+    tmp_path: Path,
+) -> None:
+    from rom_metadata_framework.detection import (
+        PlatformDetector,
+    )
+    from rom_metadata_framework.nes import (
+        NesPlatformDetector,
+    )
+
+    image = tmp_path / "example.nes"
+    image.write_bytes(
+        make_header()
+        + (b"P" * (16 * 1024))
+        + (b"C" * (8 * 1024))
+    )
+
+    detector = NesPlatformDetector()
+
+    assert isinstance(
+        detector,
+        PlatformDetector,
+    )
+
+    detection = detector.detect(image)
+
+    assert detection.best is not None
+    assert detection.best.platform == "nes"
+    assert detection.best.confidence == 100
+
+    evidence = detection.best.evidence[0]
+
+    assert evidence.source == "nes-header"
+    assert evidence.method == "format-signature"
+    assert evidence.details["representation"] == "nes2"
+
+
+def test_nes_platform_detector_detects_ines(
+    tmp_path: Path,
+) -> None:
+    from rom_metadata_framework.nes import (
+        NesPlatformDetector,
+    )
+
+    image = tmp_path / "example.nes"
+    image.write_bytes(
+        make_header(
+            nes2=False,
+        )
+        + (b"P" * (16 * 1024))
+        + (b"C" * (8 * 1024))
+    )
+
+    detection = NesPlatformDetector().detect(
+        image
+    )
+
+    assert detection.best is not None
+    assert detection.best.platform == "nes"
+    assert (
+        detection.best.evidence[0].details[
+            "representation"
+        ]
+        == "ines"
+    )
+
+
+def test_nes_platform_detector_does_not_guess_headerless(
+    tmp_path: Path,
+) -> None:
+    from rom_metadata_framework.nes import (
+        NesPlatformDetector,
+    )
+
+    image = tmp_path / "looks-like-nes.nes"
+    image.write_bytes(
+        b"headerless-content"
+    )
+
+    detection = NesPlatformDetector().detect(
+        image
+    )
+
+    assert detection.best is None
+    assert detection.candidates == ()

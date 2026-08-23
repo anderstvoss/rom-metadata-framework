@@ -76,6 +76,35 @@ class VerificationPolicy:
 
         return status.strip().lower() in self.accepted_verified_statuses
 
+    def accepts_catalogue_evidence(
+        self,
+        evidence: CatalogueEvidence,
+    ) -> bool:
+        """Return whether trusted catalogue semantics establish acceptance."""
+
+        if not self.trusts_authority(evidence.authority):
+            return False
+
+        authority = (
+            evidence.authority.strip().lower()
+            if evidence.authority is not None
+            else None
+        )
+
+        if self.accepts_status(evidence.file_status):
+            return True
+
+        # Redump records observed through Playmatch do not
+        # currently expose a per-file "Verified" status.
+        # For trusted, current Redump catalogue records, an
+        # exact strong content hash is itself the acceptance
+        # signal. This exception is authority-specific and
+        # must not make a missing status globally acceptable.
+        return (
+            authority == "redump"
+            and evidence.file_status is None
+        )
+
 
 DEFAULT_VERIFICATION_POLICY = VerificationPolicy()
 
@@ -122,8 +151,10 @@ def verify_release(
                 status=VerificationStatus.KNOWN_BAD,
                 evidence=evidence,
                 reasons=(
-                    "content exactly matches a catalogue record "
-                    "classified as bad",
+                    (
+                        "content exactly matches a catalogue record "
+                        "classified as bad"
+                    ),
                 ),
             )
 
@@ -135,17 +166,18 @@ def verify_release(
 
         if (
             item.is_strong_content_match
-            and policy.accepts_status(item.file_status)
+            and policy.accepts_catalogue_evidence(item)
             and current_ok
-            and policy.trusts_authority(item.authority)
             and item.catalogue_name is not None
         ):
             return VerificationReport(
                 status=VerificationStatus.KNOWN_GOOD,
                 evidence=evidence,
                 reasons=(
-                    "strong content hash matches an accepted file "
-                    "from a trusted catalogue authority",
+                    (
+                        "strong content hash matches an accepted file "
+                        "from a trusted catalogue authority"
+                    ),
                 ),
             )
 
@@ -154,8 +186,10 @@ def verify_release(
             status=VerificationStatus.CATALOGUE_MATCH,
             evidence=evidence,
             reasons=(
-                "content matches a catalogue record but does not "
-                "meet the known-good policy",
+                (
+                    "content matches a catalogue record but does not "
+                    "meet the known-good policy"
+                ),
             ),
         )
 
@@ -164,8 +198,10 @@ def verify_release(
             status=VerificationStatus.PROBABLE,
             evidence=evidence,
             reasons=(
-                "identity evidence exists without qualifying "
-                "catalogue verification",
+                (
+                    "identity evidence exists without qualifying "
+                    "catalogue verification"
+                ),
             ),
         )
 
