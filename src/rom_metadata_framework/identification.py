@@ -19,6 +19,7 @@ from .release_reconciliation import (
     ReleaseReconciliation,
     reconcile_release_matches,
 )
+from .representation import RepresentationIdentity
 from .routing import NoSupportingNormalizerError
 from .verification import (
     DEFAULT_VERIFICATION_POLICY,
@@ -76,6 +77,7 @@ class IdentificationResult:
 
     physical_match: CanonicalReleaseIdentity | None = None
     normalized_content: NormalizedContentIdentity | None = None
+    physical_representation: RepresentationIdentity | None = None
     local_metadata: LocalContentMetadata | None = None
     normalized_match: CanonicalReleaseIdentity | None = None
 
@@ -132,6 +134,7 @@ def identify_file(
     physical_match = resolver.identify(physical_identity)
 
     normalized_content = None
+    physical_representation = None
     local_metadata = None
     normalized_match = None
 
@@ -143,6 +146,23 @@ def identify_file(
 
         if normalized_result is not None:
             normalized_content = normalized_result.content
+
+            candidate_physical_representation = getattr(
+                normalized_result,
+                "physical_representation",
+                None,
+            )
+
+            if candidate_physical_representation is not None and not isinstance(
+                candidate_physical_representation,
+                RepresentationIdentity,
+            ):
+                raise TypeError(
+                    "normalizer physical_representation must be "
+                    "RepresentationIdentity or None"
+                )
+
+            physical_representation = candidate_physical_representation
 
             candidate_local_metadata = getattr(
                 normalized_result,
@@ -196,6 +216,7 @@ def identify_file(
         platform_detection=platform_detection,
         physical_match=physical_match,
         normalized_content=normalized_content,
+        physical_representation=physical_representation,
         local_metadata=local_metadata,
         normalized_match=normalized_match,
         release_reconciliation=release_reconciliation,

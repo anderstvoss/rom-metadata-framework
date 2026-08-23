@@ -1027,3 +1027,133 @@ def test_identification_rejects_invalid_local_metadata_result(
 
     # Invalid local evidence prevents normalized lookup.
     assert resolver.lookup_calls == 0
+
+
+def test_identification_preserves_normalizer_representation(
+    tmp_path: Path,
+) -> None:
+    from rom_metadata_framework.content import (
+        NormalizedContentIdentity,
+    )
+    from rom_metadata_framework.representation import (
+        RepresentationIdentity,
+    )
+
+    path = tmp_path / "example.rvz"
+    path.write_bytes(b"physical-container")
+
+    representation = RepresentationIdentity(
+        kind="disc-image",
+        format="rvz",
+        metadata={
+            "compression_method": "Zstandard",
+        },
+    )
+
+    class RepresentationNormalizer:
+        def identify(self, path: Path):
+            class Result:
+                content = NormalizedContentIdentity(
+                    kind="disc",
+                )
+                physical_representation = representation
+
+            return Result()
+
+    result = identify_file(
+        path,
+        detector=FakeDetector("gamecube"),
+        resolver=FakeResolver(
+            physical=None,
+            normalized=None,
+        ),
+        normalizer=RepresentationNormalizer(),
+    )
+
+    assert result.physical_representation is representation
+    assert result.physical_representation.kind == "disc-image"
+    assert result.physical_representation.format == "rvz"
+    assert result.physical_representation.metadata == {
+        "compression_method": "Zstandard",
+    }
+
+
+def test_identification_keeps_legacy_normalizer_without_representation(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "legacy.bin"
+    path.write_bytes(b"physical-bytes")
+
+    result = identify_file(
+        path,
+        detector=FakeDetector(None),
+        resolver=FakeResolver(
+            physical=None,
+            normalized=None,
+        ),
+        normalizer=FakeNormalizer(
+            HashSet(
+                sha1=("0123456789abcdef0123456789abcdef01234567"),
+            )
+        ),
+    )
+
+    assert result.normalized_content is not None
+    assert result.physical_representation is None
+
+
+def test_identification_rejects_invalid_normalizer_representation(
+    tmp_path: Path,
+) -> None:
+    import pytest
+
+    from rom_metadata_framework.content import (
+        NormalizedContentIdentity,
+    )
+
+    path = tmp_path / "invalid.bin"
+    path.write_bytes(b"physical-bytes")
+
+    class InvalidRepresentationNormalizer:
+        def identify(self, path: Path):
+            class Result:
+                content = NormalizedContentIdentity(
+                    kind="disc",
+                )
+                physical_representation = "rvz"
+
+            return Result()
+
+    with pytest.raises(
+        TypeError,
+        match=(
+            "normalizer physical_representation must be RepresentationIdentity or None"
+        ),
+    ):
+        identify_file(
+            path,
+            detector=FakeDetector(None),
+            resolver=FakeResolver(
+                physical=None,
+                normalized=None,
+            ),
+            normalizer=InvalidRepresentationNormalizer(),
+        )
+
+
+def test_identification_without_normalizer_has_no_representation(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "plain.bin"
+    path.write_bytes(b"physical-bytes")
+
+    result = identify_file(
+        path,
+        detector=FakeDetector(None),
+        resolver=FakeResolver(
+            physical=None,
+            normalized=None,
+        ),
+    )
+
+    assert result.physical_representation is None
