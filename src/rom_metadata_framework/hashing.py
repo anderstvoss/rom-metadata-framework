@@ -6,7 +6,6 @@ from pathlib import Path
 
 from .identity import AdapterProvenance, HashSet, RomIdentity
 
-
 DEFAULT_CHUNK_SIZE = 1024 * 1024
 
 
@@ -15,7 +14,7 @@ def hash_file(
     *,
     chunk_size: int = DEFAULT_CHUNK_SIZE,
 ) -> HashSet:
-    """Calculate CRC32, MD5, and SHA-1 for one file in a single pass."""
+    """Calculate CRC32, MD5, SHA-1, and SHA-256 in a single pass."""
 
     if chunk_size <= 0:
         raise ValueError("chunk_size must be greater than zero")
@@ -28,17 +27,20 @@ def hash_file(
     crc32 = 0
     md5 = hashlib.md5(usedforsecurity=False)
     sha1 = hashlib.sha1(usedforsecurity=False)
+    sha256 = hashlib.sha256()
 
     with path.open("rb") as stream:
         while chunk := stream.read(chunk_size):
             crc32 = zlib.crc32(chunk, crc32)
             md5.update(chunk)
             sha1.update(chunk)
+            sha256.update(chunk)
 
     return HashSet(
         crc32=f"{crc32 & 0xFFFFFFFF:08x}",
         md5=md5.hexdigest(),
         sha1=sha1.hexdigest(),
+        sha256=sha256.hexdigest(),
     )
 
 

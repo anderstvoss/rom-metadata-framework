@@ -1,4 +1,6 @@
+import hashlib
 import json
+import zlib
 from pathlib import Path
 
 import pytest
@@ -31,10 +33,21 @@ WII_HEADER = {
     "title_id": 281493537375045,
 }
 
+CANONICAL_DISC_BYTES = b"synthetic-canonical-disc"
+
 HASHES = {
-    "crc32": "5365c84b",
-    "md5": "0e63d4223b01d9aba596259dc155a174",
-    "sha1": "d4e70c064cc714ba8400a849cf299dbd1aa326fc",
+    "crc32": f"{zlib.crc32(CANONICAL_DISC_BYTES) & 0xffffffff:08x}",
+    "md5": hashlib.md5(
+        CANONICAL_DISC_BYTES,
+        usedforsecurity=False,
+    ).hexdigest(),
+    "sha1": hashlib.sha1(
+        CANONICAL_DISC_BYTES,
+        usedforsecurity=False,
+    ).hexdigest(),
+    "sha256": hashlib.sha256(
+        CANONICAL_DISC_BYTES,
+    ).hexdigest(),
     "rchash": "326d2c2de5c8957637780da332ab9dbb",
 }
 
@@ -51,6 +64,19 @@ def write_fake_dolphin(
         "#!/bin/sh\n"
         "if [ \"$1\" = \"header\" ]; then\n"
         f"  printf '%s\\n' '{json.dumps(header)}'\n"
+        "  exit 0\n"
+        "fi\n"
+        "if [ \"$1\" = \"convert\" ]; then\n"
+        "  output=\"\"\n"
+        "  while [ \"$#\" -gt 0 ]; do\n"
+        "    if [ \"$1\" = \"-o\" ]; then\n"
+        "      shift\n"
+        "      output=\"$1\"\n"
+        "    fi\n"
+        "    shift\n"
+        "  done\n"
+        "  [ -n \"$output\" ] || exit 4\n"
+        "  printf '%s' 'synthetic-canonical-disc' > \"$output\"\n"
         "  exit 0\n"
         "fi\n"
         "if [ \"$1\" = \"verify\" ]; then\n"
@@ -87,6 +113,7 @@ def test_gamecube_disc_identity(tmp_path: Path) -> None:
 
     identity = DolphinAdapter(
         executable=str(helper),
+        temporary_directory=tmp_path,
     ).identify(image)
 
     assert identity.platform == "gamecube"
@@ -98,6 +125,7 @@ def test_gamecube_disc_identity(tmp_path: Path) -> None:
     assert identity.content.hashes.crc32 == HASHES["crc32"]
     assert identity.content.hashes.md5 == HASHES["md5"]
     assert identity.content.hashes.sha1 == HASHES["sha1"]
+    assert identity.content.hashes.sha256 == HASHES["sha256"]
     assert (
         identity.content.specialized_identifiers[
             "retroachievements"
@@ -126,6 +154,7 @@ def test_wii_disc_identity(tmp_path: Path) -> None:
 
     identity = DolphinAdapter(
         executable=str(helper),
+        temporary_directory=tmp_path,
     ).identify(image)
 
     assert identity.platform == "wii"
@@ -157,6 +186,7 @@ def test_legacy_zero_rchash_is_ignored(
 
     identity = DolphinAdapter(
         executable=str(helper),
+        temporary_directory=tmp_path,
     ).identify(image)
 
     assert "retroachievements" not in (
@@ -164,11 +194,11 @@ def test_legacy_zero_rchash_is_ignored(
     )
 
 
-def test_invalid_regular_hash_is_rejected(
+def test_invalid_specialized_hash_is_rejected(
     tmp_path: Path,
 ) -> None:
     hashes = dict(HASHES)
-    hashes["sha1"] = "invalid"
+    hashes["rchash"] = "invalid"
 
     helper = write_fake_dolphin(
         tmp_path / "dolphin-tool",
@@ -182,6 +212,7 @@ def test_invalid_regular_hash_is_rejected(
     with pytest.raises(DolphinResponseError):
         DolphinAdapter(
             executable=str(helper),
+            temporary_directory=tmp_path,
         ).identify(image)
 
 

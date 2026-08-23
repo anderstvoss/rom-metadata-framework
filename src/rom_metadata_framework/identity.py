@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Mapping
 
 
 @dataclass(frozen=True, slots=True)
@@ -12,12 +12,14 @@ class HashSet:
     crc32: str | None = None
     md5: str | None = None
     sha1: str | None = None
+    sha256: str | None = None
 
     def __post_init__(self) -> None:
         for name, value in (
             ("crc32", self.crc32),
             ("md5", self.md5),
             ("sha1", self.sha1),
+            ("sha256", self.sha256),
         ):
             if value is None:
                 continue
@@ -28,6 +30,7 @@ class HashSet:
                 "crc32": 8,
                 "md5": 32,
                 "sha1": 40,
+                "sha256": 64,
             }
 
             if len(normalized) != expected_lengths[name]:
