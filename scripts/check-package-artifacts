@@ -55,6 +55,7 @@ with zipfile.ZipFile(path) as archive:
         ".pyc",
         "adapters/",
         "docs/",
+        "examples/",
         "scripts/",
         "templates/",
         "tests/",
@@ -100,6 +101,9 @@ with tarfile.open(path, "r:gz") as archive:
         "/README.md",
         "/SECURITY.md",
         "/docs/ARCHITECTURE.md",
+        "/docs/getting-started.md",
+        "/examples/identify_release.py",
+        "/examples/runtime_capabilities.py",
         "/docs/release-policy.md",
         "/pyproject.toml",
         "/src/rom_metadata_framework/__init__.py",
@@ -126,6 +130,8 @@ uv venv "$tmp_root/venv" >/dev/null
 
 uv pip install     --python "$tmp_root/venv/bin/python"     "$wheel"     >/dev/null
 
+echo
+echo "===== PACKAGE VERSION CONSISTENCY ====="
 expected_version="$(
     python3 -c '
 import pathlib
@@ -135,6 +141,21 @@ with pathlib.Path("pyproject.toml").open("rb") as handle:
     print(tomllib.load(handle)["project"]["version"])
 '
 )"
+
+expected_wheel="rom_metadata_framework-${expected_version}-py3-none-any.whl"
+expected_sdist="rom_metadata_framework-${expected_version}.tar.gz"
+
+if [ "$(basename "$wheel")" != "$expected_wheel" ]; then
+    echo "FAIL: wheel filename does not match package version."
+    exit 1
+fi
+
+if [ "$(basename "$sdist")" != "$expected_sdist" ]; then
+    echo "FAIL: sdist filename does not match package version."
+    exit 1
+fi
+
+echo "artifact filenames match package version"
 
 (
     cd "$tmp_root"

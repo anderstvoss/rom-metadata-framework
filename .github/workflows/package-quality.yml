@@ -65,7 +65,7 @@ jobs:
 
       - name: Run Ruff
         run: |
-          uv run             --frozen             --python "${{ matrix.python-version }}"             ruff check src tests
+          uv run             --frozen             --python "${{ matrix.python-version }}"             ruff check src tests examples
 
   package-artifact:
     name: Build and install artifacts

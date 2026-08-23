@@ -83,7 +83,7 @@ The repository uses `uv` for the locked development environment.
 ```text
 uv sync --frozen --extra dev
 uv run --frozen pytest -q
-uv run --frozen ruff check src tests
+uv run --frozen ruff check src tests examples
 ```
 
 Before publishing changes, run:
