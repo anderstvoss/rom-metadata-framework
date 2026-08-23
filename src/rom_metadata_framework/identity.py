@@ -75,6 +75,7 @@ class RomIdentity:
     product_code: str | None = None
     title_id: str | None = None
 
+    specialized_identifiers: Mapping[str, str] = field(default_factory=dict)
     media_metadata: Mapping[str, str] = field(default_factory=dict)
 
     adapter: AdapterProvenance | None = None
@@ -85,6 +86,36 @@ class RomIdentity:
 
             if value is not None:
                 object.__setattr__(self, name, value.strip() or None)
+
+        normalized_identifiers: dict[str, str] = {}
+
+        for namespace, value in self.specialized_identifiers.items():
+            normalized_namespace = str(namespace).strip().lower()
+            normalized_value = str(value).strip()
+
+            if not normalized_namespace:
+                raise ValueError(
+                    "specialized identifier namespaces must not be empty"
+                )
+
+            if not normalized_value:
+                raise ValueError(
+                    "specialized identifier values must not be empty"
+                )
+
+            if normalized_namespace in normalized_identifiers:
+                raise ValueError(
+                    "duplicate specialized identifier namespace "
+                    f"{normalized_namespace!r}"
+                )
+
+            normalized_identifiers[normalized_namespace] = normalized_value
+
+        object.__setattr__(
+            self,
+            "specialized_identifiers",
+            MappingProxyType(normalized_identifiers),
+        )
 
         normalized_metadata: dict[str, str] = {}
 
