@@ -386,3 +386,157 @@ def test_inspect_ps2_iso_rejects_nonstandard_block_size(
         match="logical block size is not 2048",
     ):
         inspect_ps2_iso(path)
+
+
+def test_ps2_structural_inspector_returns_representation_and_metadata(
+    tmp_path: Path,
+) -> None:
+    from rom_metadata_framework.ps2 import Ps2StructuralInspector
+
+    path = tmp_path / "game.iso"
+
+    _write_iso(
+        path,
+        system_cnf=(
+            b"BOOT2 = cdrom0:\\SLUS_200.13;1\n"
+        ),
+    )
+
+    result = Ps2StructuralInspector().inspect(path)
+
+    assert result is not None
+
+    representation = result.physical_representation
+
+    assert representation is not None
+    assert representation.kind == "disc-image"
+    assert representation.format == "iso9660"
+    assert representation.metadata == {
+        "volume_identifier": "SLUS_20013",
+    }
+
+    metadata = result.local_metadata
+
+    assert metadata is not None
+    assert metadata.platform == "playstation-2"
+    assert len(metadata.identifiers) == 1
+    assert metadata.identifiers[0].namespace == (
+        "ps2-product-code"
+    )
+    assert metadata.identifiers[0].value == "SLUS-20013"
+    assert metadata.boot["path"] == (
+        r"cdrom0:\SLUS_200.13;1"
+    )
+    assert metadata.native_metadata[
+        "volume_identifier"
+    ] == "SLUS_20013"
+
+
+def test_ps2_structural_inspector_preserves_homebrew_without_serial(
+    tmp_path: Path,
+) -> None:
+    from rom_metadata_framework.ps2 import Ps2StructuralInspector
+
+    path = tmp_path / "homebrew.iso"
+
+    _write_iso(
+        path,
+        system_cnf=(
+            b"BOOT2 = cdrom0:\\BOOT.ELF;1\n"
+        ),
+    )
+
+    result = Ps2StructuralInspector().inspect(path)
+
+    assert result is not None
+    assert result.local_metadata is not None
+    assert result.local_metadata.identifiers == ()
+    assert result.local_metadata.boot["path"] == (
+        r"cdrom0:\BOOT.ELF;1"
+    )
+
+
+def test_ps2_structural_inspector_returns_none_for_unsupported_file(
+    tmp_path: Path,
+) -> None:
+    from rom_metadata_framework.ps2 import Ps2StructuralInspector
+
+    path = tmp_path / "ordinary.bin"
+    path.write_bytes(b"ordinary")
+
+    assert Ps2StructuralInspector().inspect(path) is None
+
+
+def test_ps2_structural_inspector_integrates_with_identify_file(
+    tmp_path: Path,
+) -> None:
+    from rom_metadata_framework.defaults import (
+        build_default_detector,
+        build_default_inspector,
+    )
+    from rom_metadata_framework.identification import (
+        identify_file,
+    )
+
+    path = tmp_path / "game.iso"
+
+    _write_iso(
+        path,
+        system_cnf=(
+            b"BOOT2 = cdrom0:\\SLUS_200.13;1\n"
+        ),
+    )
+
+    class Resolver:
+        def __init__(self) -> None:
+            self.physical_calls = 0
+            self.normalized_lookup_calls = 0
+
+        def identify(self, identity):
+            self.physical_calls += 1
+
+        def identify_lookup(self, lookup):
+            self.normalized_lookup_calls += 1
+
+    resolver = Resolver()
+
+    result = identify_file(
+        path,
+        detector=build_default_detector(),
+        resolver=resolver,
+        inspector=build_default_inspector(),
+    )
+
+    assert result.platform_detection.best is not None
+    assert (
+        result.platform_detection.best.platform
+        == "playstation-2"
+    )
+
+    assert result.physical_representation is not None
+    assert result.physical_representation.kind == "disc-image"
+    assert result.physical_representation.format == "iso9660"
+    assert result.physical_representation.metadata == {
+        "volume_identifier": "SLUS_20013",
+    }
+
+    assert result.local_metadata is not None
+    assert result.local_metadata.platform == "playstation-2"
+    assert len(result.local_metadata.identifiers) == 1
+    assert (
+        result.local_metadata.identifiers[0].namespace
+        == "ps2-product-code"
+    )
+    assert (
+        result.local_metadata.identifiers[0].value
+        == "SLUS-20013"
+    )
+    assert result.local_metadata.boot["path"] == (
+        r"cdrom0:\SLUS_200.13;1"
+    )
+
+    assert result.normalized_content is None
+    assert result.normalized_match is None
+
+    assert resolver.physical_calls == 1
+    assert resolver.normalized_lookup_calls == 0
