@@ -18,3 +18,5 @@ yet. Versioning and release expectations are documented in
 - Runtime capability reporting and optional Dolphin/xdvdfs backend
   documentation.
 - Repository packaging, distribution, and release-readiness validation.
+- Runnable standard-composition examples and release-consistent package
+  artifact validation.

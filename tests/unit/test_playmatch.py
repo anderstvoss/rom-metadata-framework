@@ -1,4 +1,5 @@
 import json
+from importlib.metadata import version
 from io import BytesIO
 from typing import Self
 from urllib.error import HTTPError, URLError
@@ -7,6 +8,7 @@ import pytest
 
 from rom_metadata_framework.identity import HashSet, RomIdentity
 from rom_metadata_framework.playmatch import (
+    PLAYMATCH_USER_AGENT,
     PlaymatchRequestError,
     PlaymatchResolver,
     PlaymatchResponseError,
@@ -821,3 +823,8 @@ def test_playmatch_reports_timeout(
         match="request timed out",
     ):
         PlaymatchResolver().identify(identity())
+
+
+def test_playmatch_user_agent_tracks_distribution_version() -> None:
+    expected = version("rom-metadata-framework")
+    assert PLAYMATCH_USER_AGENT == f"rom-metadata-framework/{expected}"

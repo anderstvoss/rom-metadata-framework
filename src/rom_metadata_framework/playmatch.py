@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
@@ -20,6 +21,13 @@ from .resolvers import MetadataResolver, ResolvedMetadata
 
 DEFAULT_PLAYMATCH_API_URL = "https://playmatch.retrorealm.dev/api/v2"
 DEFAULT_PLAYMATCH_TIMEOUT = 10.0
+
+try:
+    PACKAGE_VERSION = version("rom-metadata-framework")
+except PackageNotFoundError:
+    PACKAGE_VERSION = "unknown"
+
+PLAYMATCH_USER_AGENT = f"rom-metadata-framework/{PACKAGE_VERSION}"
 
 
 class PlaymatchError(RuntimeError):
@@ -193,7 +201,7 @@ class PlaymatchResolver:
             url,
             headers={
                 "Accept": "application/json",
-                "User-Agent": "rom-metadata-framework/0.1",
+                "User-Agent": PLAYMATCH_USER_AGENT,
             },
             method="GET",
         )

@@ -63,7 +63,7 @@ jobs:
         run: uv run --frozen pytest -v
 
       - name: Run Ruff
-        run: uv run --frozen ruff check src tests
+        run: uv run --frozen ruff check src tests examples
 
       - name: Run repository sanitation
         run: ./scripts/pre-public-check

@@ -15,7 +15,7 @@ uv sync --frozen --extra dev
 Run the baseline checks before opening a pull request:
 
 ```text
-uv run --frozen ruff check src tests
+uv run --frozen ruff check src tests examples
 uv run --frozen pytest -q
 ./scripts/pre-public-check
 ```
