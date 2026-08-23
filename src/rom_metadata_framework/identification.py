@@ -14,6 +14,7 @@ from .reconciliation import (
     PlatformReconciliation,
     reconcile_platform,
 )
+from .routing import NoSupportingNormalizerError
 from .verification import (
     DEFAULT_VERIFICATION_POLICY,
     VerificationPolicy,
@@ -127,21 +128,25 @@ def identify_file(
     normalized_match = None
 
     if normalizer is not None:
-        normalized_result = normalizer.identify(path)
+        try:
+            normalized_result = normalizer.identify(path)
+        except NoSupportingNormalizerError:
+            normalized_result = None
 
-        normalized_content = normalized_result.content
+        if normalized_result is not None:
+            normalized_content = normalized_result.content
 
-        lookup = LookupIdentity(
-            file_name=physical_identity.file_name or path.name,
-            file_size=physical_identity.file_size
-            if physical_identity.file_size is not None
-            else path.stat().st_size,
-            hashes=normalized_content.hashes,
-        )
+            lookup = LookupIdentity(
+                file_name=physical_identity.file_name or path.name,
+                file_size=physical_identity.file_size
+                if physical_identity.file_size is not None
+                else path.stat().st_size,
+                hashes=normalized_content.hashes,
+            )
 
-        normalized_match = resolver.identify_lookup(
-            lookup
-        )
+            normalized_match = resolver.identify_lookup(
+                lookup
+            )
 
     provider_platform = None
 
