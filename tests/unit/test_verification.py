@@ -117,3 +117,91 @@ def test_conflict_overrides_known_good() -> None:
     )
 
     assert report.status is VerificationStatus.CONFLICT
+
+
+def test_untrusted_authority_does_not_establish_known_good() -> None:
+    report = verify_release(
+        identity_with(
+            CatalogueEvidence(
+                source="playmatch",
+                match_method="SHA1",
+                authority="Untrusted Community DAT",
+                catalogue_name="Example DAT",
+                file_status="Verified",
+                current_in_latest_catalogue=True,
+            )
+        )
+    )
+
+    assert report.status is VerificationStatus.CATALOGUE_MATCH
+    assert not report.known_good
+
+
+def test_redump_is_trusted_by_default() -> None:
+    report = verify_release(
+        identity_with(
+            CatalogueEvidence(
+                source="playmatch",
+                match_method="SHA1",
+                authority="Redump",
+                catalogue_name="Sony - PlayStation",
+                file_status="Verified",
+                current_in_latest_catalogue=True,
+            )
+        )
+    )
+
+    assert report.status is VerificationStatus.KNOWN_GOOD
+
+
+def test_custom_policy_can_trust_additional_authority() -> None:
+    from rom_metadata_framework.verification import VerificationPolicy
+
+    policy = VerificationPolicy(
+        trusted_authorities=frozenset({
+            "Custom DAT",
+        }),
+    )
+
+    report = verify_release(
+        identity_with(
+            CatalogueEvidence(
+                source="custom",
+                match_method="SHA1",
+                authority="Custom DAT",
+                catalogue_name="Private Catalogue",
+                file_status="Verified",
+                current_in_latest_catalogue=True,
+            )
+        ),
+        policy=policy,
+    )
+
+    assert report.status is VerificationStatus.KNOWN_GOOD
+
+
+def test_policy_can_allow_historical_verified_record() -> None:
+    from rom_metadata_framework.verification import VerificationPolicy
+
+    policy = VerificationPolicy(
+        trusted_authorities=frozenset({
+            "No-Intro",
+        }),
+        require_current_catalogue=False,
+    )
+
+    report = verify_release(
+        identity_with(
+            CatalogueEvidence(
+                source="playmatch",
+                match_method="SHA1",
+                authority="No-Intro",
+                catalogue_name="Nintendo - SNES",
+                file_status="Verified",
+                current_in_latest_catalogue=False,
+            )
+        ),
+        policy=policy,
+    )
+
+    assert report.status is VerificationStatus.KNOWN_GOOD

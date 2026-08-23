@@ -28,6 +28,59 @@ _BAD_STATUSES = frozenset({
 
 
 @dataclass(frozen=True, slots=True)
+class VerificationPolicy:
+    """Policy controlling which catalogue evidence may establish trust."""
+
+    trusted_authorities: frozenset[str] = frozenset({
+        "no-intro",
+        "redump",
+    })
+    accepted_verified_statuses: frozenset[str] = frozenset({
+        "verified",
+    })
+    require_current_catalogue: bool = True
+
+    def __post_init__(self) -> None:
+        normalized_authorities = frozenset(
+            authority.strip().lower()
+            for authority in self.trusted_authorities
+            if authority.strip()
+        )
+
+        normalized_statuses = frozenset(
+            status.strip().lower()
+            for status in self.accepted_verified_statuses
+            if status.strip()
+        )
+
+        object.__setattr__(
+            self,
+            "trusted_authorities",
+            normalized_authorities,
+        )
+        object.__setattr__(
+            self,
+            "accepted_verified_statuses",
+            normalized_statuses,
+        )
+
+    def trusts_authority(self, authority: str | None) -> bool:
+        if authority is None:
+            return False
+
+        return authority.strip().lower() in self.trusted_authorities
+
+    def accepts_status(self, status: str | None) -> bool:
+        if status is None:
+            return False
+
+        return status.strip().lower() in self.accepted_verified_statuses
+
+
+DEFAULT_VERIFICATION_POLICY = VerificationPolicy()
+
+
+@dataclass(frozen=True, slots=True)
 class VerificationReport:
     """Provider-independent assessment of identified content."""
 
@@ -43,6 +96,8 @@ class VerificationReport:
 
 def verify_release(
     identity: CanonicalReleaseIdentity,
+    *,
+    policy: VerificationPolicy = DEFAULT_VERIFICATION_POLICY,
 ) -> VerificationReport:
     """Derive a conservative verification result from available evidence."""
 
@@ -73,19 +128,24 @@ def verify_release(
             )
 
     for item in evidence:
+        current_ok = (
+            item.current_in_latest_catalogue is True
+            or not policy.require_current_catalogue
+        )
+
         if (
             item.is_strong_content_match
-            and item.is_verified
-            and item.current_in_latest_catalogue is True
-            and item.authority is not None
+            and policy.accepts_status(item.file_status)
+            and current_ok
+            and policy.trusts_authority(item.authority)
             and item.catalogue_name is not None
         ):
             return VerificationReport(
                 status=VerificationStatus.KNOWN_GOOD,
                 evidence=evidence,
                 reasons=(
-                    "strong content hash matches a verified file "
-                    "in the current catalogue",
+                    "strong content hash matches an accepted file "
+                    "from a trusted catalogue authority",
                 ),
             )
 
