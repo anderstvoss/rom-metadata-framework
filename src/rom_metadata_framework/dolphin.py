@@ -7,7 +7,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import MappingProxyType
 
-from .backends import BackendSpec, run_backend
+from .backends import BackendError, BackendSpec, run_backend
 from .content import NormalizedContentIdentity
 from .hashing import hash_file
 from .identity import HashSet
@@ -142,9 +142,27 @@ class DolphinAdapter:
         )
 
     def supports(self, path: Path) -> bool:
-        """Return whether the path is a regular file Dolphin may inspect."""
+        """Return whether Dolphin recognizes the represented disc."""
 
-        return Path(path).is_file()
+        path = Path(path)
+
+        if not path.is_file():
+            return False
+
+        try:
+            header = self._header(path)
+            self._required_string(
+                header,
+                "game_id",
+            )
+            self._required_revision(header)
+        except (
+            BackendError,
+            DolphinResponseError,
+        ):
+            return False
+
+        return True
 
     def identify(self, path: Path) -> DolphinDiscIdentity:
         """Inspect and normalize a GameCube or Wii disc image."""

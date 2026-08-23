@@ -345,3 +345,37 @@ def test_nes_normalized_content_includes_sha256(tmp_path: Path) -> None:
         result.content.hashes.sha256
         == hashlib.sha256(payload).hexdigest()
     )
+
+
+def test_headerless_nes_support_requires_nes_extension(
+    tmp_path: Path,
+) -> None:
+    payload = b"headerless-content"
+
+    nes_path = tmp_path / "example.nes"
+    nes_path.write_bytes(payload)
+
+    binary_path = tmp_path / "example.bin"
+    binary_path.write_bytes(payload)
+
+    adapter = NesAdapter(
+        allow_headerless=True,
+    )
+
+    assert adapter.supports(nes_path)
+    assert not adapter.supports(binary_path)
+
+
+def test_headered_nes_support_does_not_require_extension(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "example.bin"
+    path.write_bytes(
+        make_header(
+            nes2=False,
+        )
+        + (b"P" * (16 * 1024))
+        + (b"C" * (8 * 1024))
+    )
+
+    assert NesAdapter().supports(path)
