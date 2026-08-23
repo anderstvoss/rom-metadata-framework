@@ -1,25 +1,32 @@
 ROM Metadata Framework
 
-This repository contains original framework code licensed under the MIT
-License unless otherwise noted.
+This project contains original framework code licensed under the MIT License
+unless otherwise noted.
 
-The project may integrate with independently installed third-party tools,
-libraries, emulators, and metadata services.
+The framework can integrate with independently installed third-party tools,
+libraries, emulators, catalogues, and metadata services. Third-party projects
+retain their own copyrights, trademarks, and licenses.
 
-Third-party projects retain their own copyrights and licenses.
+Current integration boundaries include:
 
-External dependencies are not included in this repository unless explicitly
-documented.
+- Dolphin Emulator command-line tooling for GameCube/Wii inspection and
+  normalization;
+- xdvdfs command-line tooling for original-Xbox XDVDFS inspection and
+  normalization;
+- rcheevos through a separately built helper executable;
+- external catalogue and metadata-provider services.
 
-Planned or potential integrations include projects such as:
+The Python distribution does not bundle Dolphin, xdvdfs, the rcheevos helper,
+commercial game content, or third-party metadata databases.
 
-- Dolphin Emulator
-- extract-xiso
-- rcheevos
-- platform-specific inspection utilities
-- metadata providers and databases
+Repository-only integration material may include provenance records, helper
+source, upstream license copies, and validation instructions. Those files do not
+become part of the installed Python package unless explicitly included in a
+future distribution.
 
-Use of a project name does not imply ownership, endorsement, or redistribution.
+Use of a project or product name does not imply ownership or endorsement.
 
 Each material integration must document its upstream source, license,
-integration method, supported versions, and redistribution status.
+integration method, supported version or revision where practical, and
+redistribution status. See the repository licensing and third-party provenance
+documentation for the authoritative project policy.

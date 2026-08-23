@@ -28,14 +28,9 @@ jobs:
           archive="gitleaks_8.30.1_linux_x64.tar.gz"
           expected_sha256="551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
 
-          curl -fsSL \
-            "https://github.com/gitleaks/gitleaks/releases/download/${version}/${archive}" \
-            -o "/tmp/${archive}"
+          curl -fsSL             "https://github.com/gitleaks/gitleaks/releases/download/${version}/${archive}"             -o "/tmp/${archive}"
 
-          printf '%s  %s\n' \
-            "$expected_sha256" \
-            "/tmp/${archive}" \
-            | sha256sum --check --strict
+          printf '%s  %s\n'             "$expected_sha256"             "/tmp/${archive}"             | sha256sum --check --strict
 
           tar -xzf "/tmp/${archive}" -C /tmp gitleaks
 
@@ -51,20 +46,13 @@ jobs:
           archive="uv-x86_64-unknown-linux-gnu.tar.gz"
           expected_sha256="68a509da24b06b4223a1c0175fb5eb5bc79342b76cbeff0cfe51ac3f5b17b6b2"
 
-          curl -fsSL \
-            "https://github.com/astral-sh/uv/releases/download/${version}/${archive}" \
-            -o "/tmp/${archive}"
+          curl -fsSL             "https://github.com/astral-sh/uv/releases/download/${version}/${archive}"             -o "/tmp/${archive}"
 
-          printf '%s  %s\n' \
-            "$expected_sha256" \
-            "/tmp/${archive}" \
-            | sha256sum --check --strict
+          printf '%s  %s\n'             "$expected_sha256"             "/tmp/${archive}"             | sha256sum --check --strict
 
           tar -xzf "/tmp/${archive}" -C /tmp
 
-          sudo install -m 0755 \
-            "/tmp/uv-x86_64-unknown-linux-gnu/uv" \
-            /usr/local/bin/uv
+          sudo install -m 0755             "/tmp/uv-x86_64-unknown-linux-gnu/uv"             /usr/local/bin/uv
 
           uv --version
 
@@ -75,7 +63,7 @@ jobs:
         run: uv run --frozen pytest -v
 
       - name: Run Ruff
-        run: uv tool run ruff check src tests
+        run: uv run --frozen ruff check src tests
 
       - name: Run repository sanitation
         run: ./scripts/pre-public-check
