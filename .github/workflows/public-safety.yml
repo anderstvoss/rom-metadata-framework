@@ -43,6 +43,37 @@ jobs:
 
           gitleaks version
 
+      - name: Install uv
+        run: |
+          set -euo pipefail
+
+          version="0.12.5"
+          archive="uv-x86_64-unknown-linux-gnu.tar.gz"
+          expected_sha256="68a509da24b06b4223a1c0175fb5eb5bc79342b76cbeff0cfe51ac3f5b17b6b2"
+
+          curl -fsSL \
+            "https://github.com/astral-sh/uv/releases/download/${version}/${archive}" \
+            -o "/tmp/${archive}"
+
+          printf '%s  %s\n' \
+            "$expected_sha256" \
+            "/tmp/${archive}" \
+            | sha256sum --check --strict
+
+          tar -xzf "/tmp/${archive}" -C /tmp
+
+          sudo install -m 0755 \
+            "/tmp/uv-x86_64-unknown-linux-gnu/uv" \
+            /usr/local/bin/uv
+
+          uv --version
+
+      - name: Sync locked development environment
+        run: uv sync --frozen --extra dev
+
+      - name: Run unit tests
+        run: uv run --frozen pytest -v
+
       - name: Run repository sanitation
         run: ./scripts/pre-public-check
 
