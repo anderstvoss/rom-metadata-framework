@@ -623,3 +623,49 @@ def test_enrichment_reconciliation_works_without_provider_report() -> None:
         is MetadataFieldReconciliationStatus.UNRESOLVED
     )
     assert not reconciliation.has_divergence
+
+
+def test_enrichment_result_exposes_metadata_state_helpers() -> None:
+    from rom_metadata_framework.detection import PlatformDetection
+    from rom_metadata_framework.identification import IdentificationResult
+    from rom_metadata_framework.identity import RomIdentity
+    from rom_metadata_framework.metadata_collection import MetadataEnrichmentResult
+
+    result = MetadataEnrichmentResult(
+        identification=IdentificationResult(
+            physical_identity=RomIdentity(),
+            platform_detection=PlatformDetection(),
+        )
+    )
+
+    assert not result.metadata_collection_attempted
+    assert not result.has_local_metadata
+    assert not result.has_provider_metadata
+    assert not result.has_metadata
+    assert not result.has_metadata_divergence
+
+
+def test_enrichment_result_attempted_without_match_is_distinct() -> None:
+    from rom_metadata_framework.detection import PlatformDetection
+    from rom_metadata_framework.identification import IdentificationResult
+    from rom_metadata_framework.identity import RomIdentity
+    from rom_metadata_framework.metadata_collection import (
+        MetadataCollectionReport,
+        MetadataEnrichmentResult,
+    )
+
+    result = MetadataEnrichmentResult(
+        identification=IdentificationResult(
+            physical_identity=RomIdentity(),
+            platform_detection=PlatformDetection(),
+        ),
+        provider_report=MetadataCollectionReport(
+            attempted=("provider-a",),
+            unmatched=("provider-a",),
+            results=(),
+        ),
+    )
+
+    assert result.metadata_collection_attempted
+    assert not result.has_provider_metadata
+    assert not result.has_metadata
