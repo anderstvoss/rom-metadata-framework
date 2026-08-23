@@ -74,6 +74,9 @@ jobs:
       - name: Run unit tests
         run: uv run --frozen pytest -v
 
+      - name: Run Ruff
+        run: uv tool run ruff check src tests
+
       - name: Run repository sanitation
         run: ./scripts/pre-public-check
 

@@ -1,15 +1,16 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Mapping
 
-
-STRONG_CONTENT_MATCH_METHODS = frozenset({
-    "SHA256",
-    "SHA1",
-    "MD5",
-})
+STRONG_CONTENT_MATCH_METHODS = frozenset(
+    {
+        "SHA256",
+        "SHA1",
+        "MD5",
+    }
+)
 
 CONTENT_MATCH_METHODS = STRONG_CONTENT_MATCH_METHODS | {"CRC"}
 
@@ -41,9 +42,7 @@ class CatalogueEvidence:
             raise ValueError("catalogue evidence source must not be empty")
 
         if not method:
-            raise ValueError(
-                "catalogue evidence match_method must not be empty"
-            )
+            raise ValueError("catalogue evidence match_method must not be empty")
 
         object.__setattr__(self, "source", source)
         object.__setattr__(self, "match_method", method)
@@ -79,19 +78,14 @@ class CatalogueEvidence:
         }
 
         normalized_details = {
-            str(key).strip(): str(value).strip()
-            for key, value in self.details.items()
+            str(key).strip(): str(value).strip() for key, value in self.details.items()
         }
 
         if any(not key for key in normalized_hashes):
-            raise ValueError(
-                "catalogue hash namespaces must not be empty"
-            )
+            raise ValueError("catalogue hash namespaces must not be empty")
 
         if any(not key for key in normalized_details):
-            raise ValueError(
-                "catalogue detail keys must not be empty"
-            )
+            raise ValueError("catalogue detail keys must not be empty")
 
         object.__setattr__(
             self,

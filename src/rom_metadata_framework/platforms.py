@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Mapping
 
 
 class UnknownPlatformError(ValueError):
@@ -164,14 +164,11 @@ def _build_platform_index() -> Mapping[str, PlatformDefinition]:
 
         if canonical != platform.name:
             raise RuntimeError(
-                f"platform canonical name is not normalized: "
-                f"{platform.name!r}"
+                f"platform canonical name is not normalized: {platform.name!r}"
             )
 
         if canonical in canonical_names:
-            raise RuntimeError(
-                f"duplicate canonical platform: {canonical!r}"
-            )
+            raise RuntimeError(f"duplicate canonical platform: {canonical!r}")
 
         canonical_names.add(canonical)
 
@@ -200,10 +197,7 @@ def _build_backend_mapping_index() -> Mapping[
 ]:
     index: dict[tuple[str, str], BackendPlatformMapping] = {}
 
-    canonical_platforms = {
-        platform.name
-        for platform in PLATFORMS
-    }
+    canonical_platforms = {platform.name for platform in PLATFORMS}
 
     for mapping in BACKEND_PLATFORM_MAPPINGS:
         backend = _normalize_key(mapping.backend)
@@ -211,16 +205,13 @@ def _build_backend_mapping_index() -> Mapping[
 
         if platform not in canonical_platforms:
             raise RuntimeError(
-                f"backend mapping references unknown platform "
-                f"{platform!r}"
+                f"backend mapping references unknown platform {platform!r}"
             )
 
         key = (backend, platform)
 
         if key in index:
-            raise RuntimeError(
-                f"duplicate backend platform mapping: {key!r}"
-            )
+            raise RuntimeError(f"duplicate backend platform mapping: {key!r}")
 
         index[key] = mapping
 
@@ -236,16 +227,12 @@ def resolve_platform(value: str) -> PlatformDefinition:
     try:
         normalized = _normalize_key(value)
     except ValueError as exc:
-        raise UnknownPlatformError(
-            "platform must not be empty"
-        ) from exc
+        raise UnknownPlatformError("platform must not be empty") from exc
 
     try:
         return _PLATFORM_INDEX[normalized]
     except KeyError as exc:
-        raise UnknownPlatformError(
-            f"unknown platform: {value!r}"
-        ) from exc
+        raise UnknownPlatformError(f"unknown platform: {value!r}") from exc
 
 
 def canonical_platform_name(value: str) -> str:
@@ -265,18 +252,13 @@ def backend_platform_mapping(
     try:
         normalized_backend = _normalize_key(backend)
     except ValueError as exc:
-        raise UnsupportedPlatformBackendError(
-            "backend must not be empty"
-        ) from exc
+        raise UnsupportedPlatformBackendError("backend must not be empty") from exc
 
     try:
-        return _BACKEND_MAPPING_INDEX[
-            (normalized_backend, canonical)
-        ]
+        return _BACKEND_MAPPING_INDEX[(normalized_backend, canonical)]
     except KeyError as exc:
         raise UnsupportedPlatformBackendError(
-            f"platform {canonical!r} is not supported by "
-            f"backend {normalized_backend!r}"
+            f"platform {canonical!r} is not supported by backend {normalized_backend!r}"
         ) from exc
 
 
@@ -301,8 +283,6 @@ def rcheevos_console_id(platform: str) -> int:
     )
 
     if not isinstance(identifier, int):
-        raise RuntimeError(
-            "rcheevos platform identifier must be an integer"
-        )
+        raise TypeError("rcheevos platform identifier must be an integer")
 
     return identifier

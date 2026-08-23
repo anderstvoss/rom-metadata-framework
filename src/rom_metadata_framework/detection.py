@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
-from typing import Mapping, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from .platforms import canonical_platform_name
 
@@ -39,19 +40,14 @@ class PlatformEvidence:
             raise TypeError("platform evidence strength must be an integer")
 
         if not 0 <= self.strength <= 100:
-            raise ValueError(
-                "platform evidence strength must be between 0 and 100"
-            )
+            raise ValueError("platform evidence strength must be between 0 and 100")
 
         normalized_details = {
-            str(key).strip(): str(value).strip()
-            for key, value in self.details.items()
+            str(key).strip(): str(value).strip() for key, value in self.details.items()
         }
 
         if any(not key for key in normalized_details):
-            raise ValueError(
-                "platform evidence detail keys must not be empty"
-            )
+            raise ValueError("platform evidence detail keys must not be empty")
 
         object.__setattr__(self, "source", source)
         object.__setattr__(self, "method", method)
@@ -81,9 +77,7 @@ class PlatformCandidate:
             raise TypeError("platform confidence must be an integer")
 
         if not 0 <= self.confidence <= 100:
-            raise ValueError(
-                "platform confidence must be between 0 and 100"
-            )
+            raise ValueError("platform confidence must be between 0 and 100")
 
         object.__setattr__(self, "platform", platform)
 

@@ -6,7 +6,6 @@ from pathlib import Path
 from .backends import BackendSpec, run_backend
 from .identity import AdapterProvenance, RomIdentity
 
-
 RCHEEVOS_IDENTIFIER_NAMESPACE = "retroachievements"
 RCHEEVOS_HELPER_EXECUTABLE = "rom-metadata-rcheevos"
 RCHEEVOS_HELPER_SCHEMA_VERSION = 1
@@ -76,9 +75,7 @@ class RcheevosAdapter:
             )
 
         if payload.get("schema_version") != RCHEEVOS_HELPER_SCHEMA_VERSION:
-            raise RcheevosResponseError(
-                "unsupported rcheevos helper schema version"
-            )
+            raise RcheevosResponseError("unsupported rcheevos helper schema version")
 
         if payload.get("console_id") != self.console_id:
             raise RcheevosResponseError(
@@ -94,19 +91,14 @@ class RcheevosAdapter:
         backend_version = payload.get("backend_version")
 
         if not isinstance(identifier, str):
-            raise RcheevosResponseError(
-                "rcheevos helper response is missing a hash"
-            )
+            raise RcheevosResponseError("rcheevos helper response is missing a hash")
 
         identifier = identifier.strip().lower()
 
         if len(identifier) != 32 or any(
-            character not in "0123456789abcdef"
-            for character in identifier
+            character not in "0123456789abcdef" for character in identifier
         ):
-            raise RcheevosResponseError(
-                "rcheevos helper returned an invalid hash"
-            )
+            raise RcheevosResponseError("rcheevos helper returned an invalid hash")
 
         if not isinstance(backend_version, str):
             raise RcheevosResponseError(
