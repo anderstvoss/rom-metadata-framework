@@ -610,3 +610,14 @@ def test_probe_preserves_headerless_opt_in(
         opt_in_probe.details["representation"]
         == "headerless"
     )
+
+
+def test_nes_runtime_capability_is_ready() -> None:
+    from rom_metadata_framework.capability import RuntimeCapabilityStatus
+
+    adapter = NesAdapter()
+    capability = adapter.runtime_capability()
+
+    assert capability.name == "nes-normalization"
+    assert capability.status is RuntimeCapabilityStatus.READY
+    assert capability.ready

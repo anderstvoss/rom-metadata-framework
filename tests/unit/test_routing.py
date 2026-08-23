@@ -406,3 +406,63 @@ def test_composite_probe_results_preserve_all_adapter_outcomes(
             NormalizerProbeStatus.UNSAFE,
         ),
     )
+
+
+def test_composite_reports_runtime_capabilities_in_registration_order() -> None:
+    from rom_metadata_framework.capability import (
+        RuntimeCapability,
+        RuntimeCapabilityStatus,
+    )
+
+    class CapabilityNormalizer:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        def runtime_capability(self) -> RuntimeCapability:
+            return RuntimeCapability(
+                name=f"{self.name}-normalization",
+                status=RuntimeCapabilityStatus.READY,
+            )
+
+        def supports(self, path: Path) -> bool:
+            return False
+
+        def identify(self, path: Path):
+            raise AssertionError("must not identify")
+
+    router = CompositeNormalizer(
+        (
+            CapabilityNormalizer("first"),
+            CapabilityNormalizer("second"),
+        )
+    )
+
+    capabilities = router.runtime_capabilities()
+
+    assert tuple(item.name for item in capabilities) == (
+        "first-normalization",
+        "second-normalization",
+    )
+    assert all(item.ready for item in capabilities)
+
+
+def test_legacy_normalizer_runtime_capability_is_unknown() -> None:
+    from rom_metadata_framework.capability import RuntimeCapabilityStatus
+
+    class LegacyNormalizer:
+        name = "legacy"
+
+        def supports(self, path: Path) -> bool:
+            return False
+
+        def identify(self, path: Path):
+            raise AssertionError("must not identify")
+
+    router = CompositeNormalizer((LegacyNormalizer(),))
+
+    capability = router.runtime_capabilities()[0]
+
+    assert capability.name == "legacy-normalization"
+    assert capability.status is RuntimeCapabilityStatus.UNKNOWN
+    assert not capability.ready
+    assert capability.reason is not None

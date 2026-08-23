@@ -7,6 +7,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
 
+from .capability import (
+    RuntimeCapability,
+    RuntimeCapabilityStatus,
+)
 from .content import NormalizedContentIdentity
 from .identity import HashSet
 from .normalization import (
@@ -93,6 +97,14 @@ class NesAdapter:
         allow_headerless: bool = False,
     ) -> None:
         self.allow_headerless = allow_headerless
+
+    def runtime_capability(self) -> RuntimeCapability:
+        """Report built-in NES normalization runtime capability."""
+
+        return RuntimeCapability(
+            name="nes-normalization",
+            status=RuntimeCapabilityStatus.READY,
+        )
 
     def probe(self, path: Path) -> NormalizerProbe:
         """Classify whether this adapter can normalize one source."""
