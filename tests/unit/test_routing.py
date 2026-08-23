@@ -181,3 +181,228 @@ def test_composite_selection_is_not_order_fallback(
 
     assert first.identify_calls == 0
     assert second.identify_calls == 0
+
+
+class FakeProbeNormalizer:
+    def __init__(
+        self,
+        name: str,
+        status,
+    ) -> None:
+        self.name = name
+        self.status = status
+        self.identify_calls = 0
+
+    def probe(self, path: Path):
+        from rom_metadata_framework.normalization import (
+            NormalizerProbe,
+        )
+
+        return NormalizerProbe(
+            normalizer=self.name,
+            status=self.status,
+        )
+
+    def supports(self, path: Path) -> bool:
+        return self.probe(path).supported
+
+    def identify(self, path: Path) -> FakeResult:
+        self.identify_calls += 1
+
+        return FakeResult(
+            content=NormalizedContentIdentity(
+                kind=self.name,
+            ),
+        )
+
+
+def test_composite_terminal_probe_failure_is_explicit(
+    tmp_path: Path,
+) -> None:
+    from rom_metadata_framework.normalization import (
+        NormalizerProbeStatus,
+    )
+    from rom_metadata_framework.routing import (
+        NormalizerProbeFailureError,
+    )
+
+    path = tmp_path / "source.bin"
+    path.write_bytes(b"source")
+
+    unsafe = FakeProbeNormalizer(
+        "unsafe",
+        NormalizerProbeStatus.UNSAFE,
+    )
+    unavailable = FakeProbeNormalizer(
+        "unavailable",
+        NormalizerProbeStatus.BACKEND_UNAVAILABLE,
+    )
+    unsupported = FakeProbeNormalizer(
+        "unsupported",
+        NormalizerProbeStatus.UNSUPPORTED,
+    )
+
+    router = CompositeNormalizer(
+        (
+            unsafe,
+            unavailable,
+            unsupported,
+        )
+    )
+
+    with pytest.raises(
+        NormalizerProbeFailureError,
+    ) as exc_info:
+        router.select(path)
+
+    assert tuple(
+        probe.normalizer
+        for probe in exc_info.value.probes
+    ) == (
+        "unsafe",
+        "unavailable",
+    )
+
+    assert tuple(
+        probe.status
+        for probe in exc_info.value.probes
+    ) == (
+        NormalizerProbeStatus.UNSAFE,
+        NormalizerProbeStatus.BACKEND_UNAVAILABLE,
+    )
+
+    assert unsafe.identify_calls == 0
+    assert unavailable.identify_calls == 0
+    assert unsupported.identify_calls == 0
+
+
+def test_composite_supported_claim_wins_over_other_probe_failure(
+    tmp_path: Path,
+) -> None:
+    from rom_metadata_framework.normalization import (
+        NormalizerProbeStatus,
+    )
+
+    path = tmp_path / "source.bin"
+    path.write_bytes(b"source")
+
+    supported = FakeProbeNormalizer(
+        "supported",
+        NormalizerProbeStatus.SUPPORTED,
+    )
+    unavailable = FakeProbeNormalizer(
+        "unavailable",
+        NormalizerProbeStatus.BACKEND_UNAVAILABLE,
+    )
+
+    router = CompositeNormalizer(
+        (
+            supported,
+            unavailable,
+        )
+    )
+
+    assert router.select(path) is supported
+
+    result = router.identify(path)
+
+    assert result.content.kind == "supported"
+    assert supported.identify_calls == 1
+    assert unavailable.identify_calls == 0
+
+
+def test_composite_ambiguity_precedes_unrelated_probe_failure(
+    tmp_path: Path,
+) -> None:
+    from rom_metadata_framework.normalization import (
+        NormalizerProbeStatus,
+    )
+
+    path = tmp_path / "source.bin"
+    path.write_bytes(b"source")
+
+    first = FakeProbeNormalizer(
+        "first",
+        NormalizerProbeStatus.SUPPORTED,
+    )
+    second = FakeProbeNormalizer(
+        "second",
+        NormalizerProbeStatus.SUPPORTED,
+    )
+    failed = FakeProbeNormalizer(
+        "failed",
+        NormalizerProbeStatus.BACKEND_FAILURE,
+    )
+
+    router = CompositeNormalizer(
+        (
+            first,
+            failed,
+            second,
+        )
+    )
+
+    with pytest.raises(
+        AmbiguousNormalizerError,
+    ) as exc_info:
+        router.select(path)
+
+    assert exc_info.value.adapter_names == (
+        "first",
+        "second",
+    )
+
+    assert first.identify_calls == 0
+    assert second.identify_calls == 0
+    assert failed.identify_calls == 0
+
+
+def test_composite_probe_results_preserve_all_adapter_outcomes(
+    tmp_path: Path,
+) -> None:
+    from rom_metadata_framework.normalization import (
+        NormalizerProbeStatus,
+    )
+
+    path = tmp_path / "source.bin"
+    path.write_bytes(b"source")
+
+    adapters = (
+        FakeProbeNormalizer(
+            "unsupported",
+            NormalizerProbeStatus.UNSUPPORTED,
+        ),
+        FakeProbeNormalizer(
+            "supported",
+            NormalizerProbeStatus.SUPPORTED,
+        ),
+        FakeProbeNormalizer(
+            "unsafe",
+            NormalizerProbeStatus.UNSAFE,
+        ),
+    )
+
+    results = CompositeNormalizer(
+        adapters
+    ).probe_normalizers(path)
+
+    assert tuple(
+        (
+            normalizer.name,
+            probe.status,
+        )
+        for normalizer, probe in results
+    ) == (
+        (
+            "unsupported",
+            NormalizerProbeStatus.UNSUPPORTED,
+        ),
+        (
+            "supported",
+            NormalizerProbeStatus.SUPPORTED,
+        ),
+        (
+            "unsafe",
+            NormalizerProbeStatus.UNSAFE,
+        ),
+    )

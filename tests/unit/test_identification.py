@@ -553,3 +553,64 @@ def test_identification_propagates_ambiguous_normalizer(
 
     # No normalized provider lookup can occur.
     assert resolver.lookup_calls == 0
+
+
+def test_identification_propagates_terminal_normalizer_probe_failure(
+    tmp_path: Path,
+) -> None:
+    import pytest
+
+    from rom_metadata_framework.normalization import (
+        NormalizerProbe,
+        NormalizerProbeStatus,
+    )
+    from rom_metadata_framework.routing import (
+        CompositeNormalizer,
+        NormalizerProbeFailureError,
+    )
+
+    class FailedNormalizer:
+        name = "failed"
+
+        def probe(self, path: Path) -> NormalizerProbe:
+            return NormalizerProbe(
+                normalizer=self.name,
+                status=(
+                    NormalizerProbeStatus.BACKEND_UNAVAILABLE
+                ),
+                reason="backend unavailable",
+            )
+
+        def supports(self, path: Path) -> bool:
+            return False
+
+        def identify(self, path: Path):
+            raise AssertionError(
+                "failed normalizer must not identify"
+            )
+
+    path = tmp_path / "source.bin"
+    path.write_bytes(b"source")
+
+    resolver = FakeResolver(
+        physical=None,
+        normalized=None,
+    )
+
+    with pytest.raises(
+        NormalizerProbeFailureError,
+    ):
+        identify_file(
+            path,
+            detector=FakeDetector(None),
+            resolver=resolver,
+            normalizer=CompositeNormalizer(
+                (FailedNormalizer(),)
+            ),
+        )
+
+    # Physical provider lookup remains provider-first.
+    assert resolver.identify_calls == 1
+
+    # No normalized provider lookup can occur.
+    assert resolver.lookup_calls == 0

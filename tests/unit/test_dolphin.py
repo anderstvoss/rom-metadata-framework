@@ -390,3 +390,192 @@ def test_dolphin_platform_detector_returns_unresolved_on_failure(
 
     assert detection.best is None
     assert detection.candidates == ()
+
+
+def test_dolphin_probe_empty_header_is_unsupported(
+    tmp_path: Path,
+) -> None:
+    from rom_metadata_framework.normalization import (
+        NormalizerProbeStatus,
+    )
+
+    helper = tmp_path / "dolphin-tool"
+    helper.write_text(
+        "#!/bin/sh\n"
+        "if [ \"$1\" = \"header\" ]; then\n"
+        "  printf '%s\\n' '{}'\n"
+        "  exit 0\n"
+        "fi\n"
+        "exit 2\n"
+    )
+    helper.chmod(0o755)
+
+    image = tmp_path / "unrelated.rvz"
+    image.write_bytes(b"not-a-disc")
+
+    adapter = DolphinAdapter(
+        executable=str(helper),
+    )
+
+    probe = adapter.probe(image)
+
+    assert (
+        probe.status
+        is NormalizerProbeStatus.UNSUPPORTED
+    )
+    assert not probe.supported
+    assert not adapter.supports(image)
+
+
+def test_dolphin_probe_missing_backend_is_not_unsupported(
+    tmp_path: Path,
+) -> None:
+    from rom_metadata_framework.normalization import (
+        NormalizerProbeStatus,
+    )
+
+    image = tmp_path / "disc.rvz"
+    image.write_bytes(b"synthetic-rvz")
+
+    adapter = DolphinAdapter(
+        executable="/definitely/missing/dolphin-tool",
+    )
+
+    probe = adapter.probe(image)
+
+    assert (
+        probe.status
+        is NormalizerProbeStatus.BACKEND_UNAVAILABLE
+    )
+    assert probe.terminal_failure
+    assert not probe.supported
+    assert not adapter.supports(image)
+
+
+def test_dolphin_probe_nonzero_backend_exit_is_failure(
+    tmp_path: Path,
+) -> None:
+    from rom_metadata_framework.normalization import (
+        NormalizerProbeStatus,
+    )
+
+    helper = tmp_path / "dolphin-tool"
+    helper.write_text(
+        "#!/bin/sh\n"
+        "printf '%s\\n' 'backend exploded' >&2\n"
+        "exit 7\n"
+    )
+    helper.chmod(0o755)
+
+    image = tmp_path / "disc.rvz"
+    image.write_bytes(b"synthetic-rvz")
+
+    probe = DolphinAdapter(
+        executable=str(helper),
+    ).probe(image)
+
+    assert (
+        probe.status
+        is NormalizerProbeStatus.BACKEND_FAILURE
+    )
+    assert probe.details["exception"] == (
+        "BackendExecutionError"
+    )
+    assert probe.terminal_failure
+
+
+def test_dolphin_probe_malformed_json_is_backend_failure(
+    tmp_path: Path,
+) -> None:
+    from rom_metadata_framework.normalization import (
+        NormalizerProbeStatus,
+    )
+
+    helper = tmp_path / "dolphin-tool"
+    helper.write_text(
+        "#!/bin/sh\n"
+        "if [ \"$1\" = \"header\" ]; then\n"
+        "  printf '%s\\n' 'not-json'\n"
+        "  exit 0\n"
+        "fi\n"
+        "exit 2\n"
+    )
+    helper.chmod(0o755)
+
+    image = tmp_path / "disc.rvz"
+    image.write_bytes(b"synthetic-rvz")
+
+    probe = DolphinAdapter(
+        executable=str(helper),
+    ).probe(image)
+
+    assert (
+        probe.status
+        is NormalizerProbeStatus.BACKEND_FAILURE
+    )
+    assert probe.details["exception"] == (
+        "DolphinResponseError"
+    )
+
+
+def test_dolphin_probe_nonempty_incomplete_header_is_failure(
+    tmp_path: Path,
+) -> None:
+    from rom_metadata_framework.normalization import (
+        NormalizerProbeStatus,
+    )
+
+    helper = tmp_path / "dolphin-tool"
+    helper.write_text(
+        "#!/bin/sh\n"
+        "if [ \"$1\" = \"header\" ]; then\n"
+        "  printf '%s\\n' '{\"game_id\":\"GALE01\"}'\n"
+        "  exit 0\n"
+        "fi\n"
+        "exit 2\n"
+    )
+    helper.chmod(0o755)
+
+    image = tmp_path / "disc.rvz"
+    image.write_bytes(b"synthetic-rvz")
+
+    probe = DolphinAdapter(
+        executable=str(helper),
+    ).probe(image)
+
+    assert (
+        probe.status
+        is NormalizerProbeStatus.BACKEND_FAILURE
+    )
+    assert (
+        probe.details["response"]
+        == "incomplete-header"
+    )
+
+
+def test_dolphin_probe_valid_header_is_supported(
+    tmp_path: Path,
+) -> None:
+    from rom_metadata_framework.normalization import (
+        NormalizerProbeStatus,
+    )
+
+    helper = write_fake_dolphin(
+        tmp_path / "dolphin-tool",
+        header=GC_HEADER,
+    )
+
+    image = tmp_path / "disc.rvz"
+    image.write_bytes(b"synthetic-rvz")
+
+    probe = DolphinAdapter(
+        executable=str(helper),
+    ).probe(image)
+
+    assert (
+        probe.status
+        is NormalizerProbeStatus.SUPPORTED
+    )
+    assert probe.details["game_id"] == "GALE01"
+    assert probe.details["revision"] == "2"
+    assert probe.supported
