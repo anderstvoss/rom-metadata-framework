@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .canonical import CanonicalReleaseIdentity
-
+from .identification import IdentificationVerification
 
 _INVALID_FILENAME_CHARACTERS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
@@ -33,6 +33,8 @@ class RenamePlan:
     safe_to_apply: bool
     operation: str = "copy"
     conflicts: tuple[str, ...] = ()
+    content_known_good: bool = False
+    representation_known_good: bool = False
 
     def __post_init__(self) -> None:
         if self.operation not in {"copy", "replace"}:
@@ -70,6 +72,7 @@ class NamingPolicy:
         source_name: str,
         identity: CanonicalReleaseIdentity,
         *,
+        verification: IdentificationVerification | None = None,
         operation: str = "copy",
     ) -> RenamePlan:
         source = Path(source_name).name
@@ -84,16 +87,49 @@ class NamingPolicy:
             extension=extension,
         )
 
-        conflicts = identity.conflicts
+        verification_conflicts = (
+            ()
+            if verification is None
+            else tuple(
+                conflict
+                for report in (
+                    verification.physical,
+                    verification.normalized,
+                )
+                if report is not None
+                for conflict in report.conflicts
+            )
+        )
+
+        conflicts = tuple(
+            dict.fromkeys(
+                (
+                    *identity.conflicts,
+                    *verification_conflicts,
+                )
+            )
+        )
+
+        content_known_good = bool(
+            verification is not None
+            and verification.content_known_good
+        )
+        representation_known_good = bool(
+            verification is not None
+            and verification.representation_known_good
+        )
 
         return RenamePlan(
             source_name=source,
             destination_name=destination,
             reason="canonical-release-name",
             safe_to_apply=(
-                identity.has_authoritative_content_match
+                verification is not None
+                and verification.safe_for_canonical_naming
                 and not conflicts
             ),
             operation=operation,
             conflicts=conflicts,
+            content_known_good=content_known_good,
+            representation_known_good=representation_known_good,
         )
