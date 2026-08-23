@@ -44,11 +44,7 @@ echo "===== ADAPTER PROVENANCE ====="
 echo
 echo "===== GITLEAKS WORKTREE ====="
 
-gitleaks detect \
-    --source . \
-    --no-git \
-    --no-banner \
-    --redact
+./scripts/run-gitleaks-worktree
 
 echo
 echo "===== RESULT ====="

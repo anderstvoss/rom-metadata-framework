@@ -11,10 +11,7 @@ fi
 
 echo "===== GITLEAKS FULL HISTORY ====="
 
-gitleaks detect \
-    --source . \
-    --no-banner \
-    --redact
+./scripts/run-gitleaks-history
 
 echo
 echo "Git history scan passed."

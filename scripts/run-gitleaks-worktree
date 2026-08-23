@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if gitleaks dir --help >/dev/null 2>&1; then
+    exec gitleaks dir . \
+        --no-banner \
+        --redact
+fi
+
+exec gitleaks detect \
+    --source . \
+    --no-git \
+    --no-banner \
+    --redact

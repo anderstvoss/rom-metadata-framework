@@ -1,0 +1,64 @@
+name: Public Safety
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  repository-safety:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out full history
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+
+      - name: Install Gitleaks
+        run: |
+          set -euo pipefail
+
+          version="v8.30.1"
+          archive="gitleaks_8.30.1_linux_x64.tar.gz"
+          expected_sha256="551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+
+          curl -fsSL \
+            "https://github.com/gitleaks/gitleaks/releases/download/${version}/${archive}" \
+            -o "/tmp/${archive}"
+
+          printf '%s  %s\n' \
+            "$expected_sha256" \
+            "/tmp/${archive}" \
+            | sha256sum --check --strict
+
+          tar -xzf "/tmp/${archive}" -C /tmp gitleaks
+
+          sudo install -m 0755 /tmp/gitleaks /usr/local/bin/gitleaks
+
+          gitleaks version
+
+      - name: Run repository sanitation
+        run: ./scripts/pre-public-check
+
+      - name: Scan full Git history
+        run: ./scripts/check-git-history
+
+  gitleaks-action:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out full history
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
