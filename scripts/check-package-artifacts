@@ -1,0 +1,174 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+if [ ! -d dist ]; then
+    echo "FAIL: dist/ does not exist; run 'uv build' first."
+    exit 1
+fi
+
+mapfile -t wheels < <(find dist -maxdepth 1 -type f -name '*.whl' | sort)
+mapfile -t sdists < <(find dist -maxdepth 1 -type f -name '*.tar.gz' | sort)
+
+if [ "${#wheels[@]}" -ne 1 ]; then
+    echo "FAIL: expected exactly one wheel, found ${#wheels[@]}."
+    exit 1
+fi
+
+if [ "${#sdists[@]}" -ne 1 ]; then
+    echo "FAIL: expected exactly one source distribution, found ${#sdists[@]}."
+    exit 1
+fi
+
+wheel="${wheels[0]}"
+sdist="${sdists[0]}"
+
+echo "===== WHEEL CONTENT ====="
+
+python3 -c '
+import sys
+import zipfile
+
+path = sys.argv[1]
+
+with zipfile.ZipFile(path) as archive:
+    names = sorted(archive.namelist())
+
+    for name in names:
+        print(name)
+
+    required_suffixes = (
+        ".dist-info/METADATA",
+        ".dist-info/licenses/LICENSE",
+        ".dist-info/licenses/NOTICE",
+        "rom_metadata_framework/__init__.py",
+    )
+
+    for suffix in required_suffixes:
+        if not any(name.endswith(suffix) for name in names):
+            raise SystemExit(f"missing required wheel entry: {suffix}")
+
+    forbidden = (
+        "__pycache__/",
+        ".pyc",
+        "adapters/",
+        "docs/",
+        "scripts/",
+        "templates/",
+        "tests/",
+    )
+
+    for name in names:
+        if any(token in name for token in forbidden):
+            raise SystemExit(f"repository-only content in wheel: {name}")
+
+    metadata_name = next(
+        name for name in names if name.endswith(".dist-info/METADATA")
+    )
+    metadata = archive.read(metadata_name).decode()
+
+    for line in (
+        "Requires-Python: >=3.11",
+        "License-File: LICENSE",
+        "License-File: NOTICE",
+    ):
+        if line not in metadata:
+            raise SystemExit(f"missing wheel metadata: {line}")
+
+print("wheel_content=PASS")
+' "$wheel"
+
+echo
+echo "===== SOURCE DISTRIBUTION CONTENT ====="
+
+python3 -c '
+import sys
+import tarfile
+
+path = sys.argv[1]
+
+with tarfile.open(path, "r:gz") as archive:
+    names = sorted(archive.getnames())
+
+    required_suffixes = (
+        "/CHANGELOG.md",
+        "/CONTRIBUTING.md",
+        "/LICENSE",
+        "/NOTICE",
+        "/README.md",
+        "/SECURITY.md",
+        "/docs/ARCHITECTURE.md",
+        "/docs/release-policy.md",
+        "/pyproject.toml",
+        "/src/rom_metadata_framework/__init__.py",
+    )
+
+    for suffix in required_suffixes:
+        if not any(name.endswith(suffix) for name in names):
+            raise SystemExit(f"missing required sdist entry: {suffix}")
+
+    for name in names:
+        if "__pycache__/" in name or name.endswith(".pyc"):
+            raise SystemExit(f"generated Python cache in sdist: {name}")
+
+print("sdist_content=PASS")
+' "$sdist"
+
+echo
+echo "===== ISOLATED WHEEL INSTALL ====="
+
+tmp_root="$(mktemp -d)"
+trap 'rm -rf "$tmp_root"' EXIT
+
+uv venv "$tmp_root/venv" >/dev/null
+
+uv pip install     --python "$tmp_root/venv/bin/python"     "$wheel"     >/dev/null
+
+expected_version="$(
+    python3 -c '
+import pathlib
+import tomllib
+
+with pathlib.Path("pyproject.toml").open("rb") as handle:
+    print(tomllib.load(handle)["project"]["version"])
+'
+)"
+
+(
+    cd "$tmp_root"
+
+    "$tmp_root/venv/bin/python" -c '
+from importlib.metadata import version
+import rom_metadata_framework as rmf
+import sys
+
+expected = sys.argv[1]
+observed = version("rom-metadata-framework")
+
+if observed != expected:
+    raise SystemExit(
+        f"installed version mismatch: {observed!r} != {expected!r}"
+    )
+
+if len(rmf.__all__) != 48:
+    raise SystemExit(
+        f"unexpected root API size: {len(rmf.__all__)}"
+    )
+
+for name in (
+    "identify_file",
+    "verify_identification",
+    "collect_identification_metadata",
+    "resolve_platform",
+):
+    if not callable(getattr(rmf, name)):
+        raise SystemExit(f"public workflow is not callable: {name}")
+
+print("isolated_install=PASS")
+' "$expected_version"
+)
+
+echo
+echo "Package artifact checks passed."
