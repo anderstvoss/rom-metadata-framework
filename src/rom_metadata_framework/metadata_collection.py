@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .canonical import CanonicalReleaseIdentity
+from .contracts import MetadataProviderContractError
 from .identification import IdentificationResult
 from .local_metadata import LocalContentMetadata
 from .metadata_provider import (
@@ -109,10 +110,15 @@ class MetadataProviderCollection:
                 continue
 
             if result.provider != provider_name:
-                raise ValueError(
-                    "metadata provider result source does not match "
-                    "the provider that returned it: "
-                    f"{result.provider!r} != {provider_name!r}"
+                raise MetadataProviderContractError(
+                    (
+                        "metadata provider result source does not match "
+                        "the provider that returned it: "
+                        f"{result.provider!r} != {provider_name!r}"
+                    ),
+                    component=provider_name,
+                    operation="lookup_metadata",
+                    field="provider",
                 )
 
             results.append(result)

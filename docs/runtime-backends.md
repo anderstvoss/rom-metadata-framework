@@ -33,6 +33,13 @@ Backend processes are invoked directly without a command shell. Standard
 output, standard error, and the return code are captured. Backend executions
 use a timeout and non-zero exits are represented explicitly as backend errors.
 
+Backend exceptions also retain structured execution context for callers that
+need diagnostics without parsing exception messages. Depending on the failure,
+this can include the framework backend name, configured executable, resolved
+executable, arguments, timeout, exit status, standard output, and standard
+error. Exception messages remain human-readable summaries rather than the
+machine-readable diagnostic interface.
+
 ## Runtime capability reporting
 
 Adapters that depend on external tools expose runtime capability information.

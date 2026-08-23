@@ -52,8 +52,17 @@ def test_run_backend_rejects_missing_executable() -> None:
         executable="rom-metadata-framework-definitely-missing-command",
     )
 
-    with pytest.raises(BackendUnavailableError):
+    with pytest.raises(BackendUnavailableError) as exc_info:
         run_backend(spec)
+
+    error = exc_info.value
+
+    assert error.backend_name == "missing"
+    assert error.configured_executable == (
+        "rom-metadata-framework-definitely-missing-command"
+    )
+    assert error.executable is None
+    assert error.arguments == ()
 
 
 def test_run_backend_captures_stdout() -> None:
@@ -114,6 +123,10 @@ def test_run_backend_reports_nonzero_exit() -> None:
 
     error = exc_info.value
 
+    assert error.backend_name == "python"
+    assert error.configured_executable == "python3"
+    assert error.executable is not None
+    assert error.arguments[0] == "-c"
     assert error.returncode == 7
     assert "stdout-text" in error.stdout
     assert "stderr-text" in error.stderr
@@ -125,12 +138,23 @@ def test_run_backend_enforces_timeout() -> None:
         executable="python3",
     )
 
-    with pytest.raises(BackendTimeoutError):
+    with pytest.raises(BackendTimeoutError) as exc_info:
         run_backend(
             spec,
             ("-c", "import time; time.sleep(2)"),
             timeout=0.05,
         )
+
+    error = exc_info.value
+
+    assert error.backend_name == "python"
+    assert error.configured_executable == "python3"
+    assert error.executable is not None
+    assert error.arguments == (
+        "-c",
+        "import time; time.sleep(2)",
+    )
+    assert error.timeout == 0.05
 
 
 def test_probe_backend_captures_version() -> None:
@@ -230,3 +254,32 @@ def test_probe_failure_preserves_backend_availability() -> None:
     assert status.executable is not None
     assert status.version is None
     assert status.error is not None
+
+
+
+def test_backend_timeout_error_keeps_message_only_compatibility() -> None:
+    error = BackendTimeoutError("backend timed out")
+
+    assert str(error) == "backend timed out"
+    assert error.backend_name is None
+    assert error.configured_executable is None
+    assert error.executable is None
+    assert error.arguments == ()
+    assert error.timeout is None
+
+
+def test_backend_execution_error_keeps_existing_constructor() -> None:
+    error = BackendExecutionError(
+        executable="example-tool",
+        returncode=9,
+        stdout="output",
+        stderr="error",
+    )
+
+    assert error.backend_name is None
+    assert error.configured_executable is None
+    assert error.executable == "example-tool"
+    assert error.arguments == ()
+    assert error.returncode == 9
+    assert error.stdout == "output"
+    assert error.stderr == "error"

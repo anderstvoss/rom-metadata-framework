@@ -6,6 +6,7 @@ from rom_metadata_framework.canonical import (
 from rom_metadata_framework.content import (
     NormalizedContentIdentity,
 )
+from rom_metadata_framework.contracts import NormalizerContractError
 from rom_metadata_framework.detection import (
     PlatformCandidate,
     PlatformDetection,
@@ -1035,7 +1036,7 @@ def test_identification_rejects_invalid_local_metadata_result(
     )
 
     with pytest.raises(
-        TypeError,
+        NormalizerContractError,
         match="normalizer local_metadata",
     ):
         identify_file(
@@ -1128,7 +1129,7 @@ def test_identification_rejects_incomplete_normalizer_result(
     )
 
     with pytest.raises(
-        TypeError,
+        NormalizerContractError,
         match="NormalizationResult-compatible",
     ):
         identify_file(
@@ -1166,7 +1167,7 @@ def test_identification_rejects_invalid_normalizer_representation(
             return Result()
 
     with pytest.raises(
-        TypeError,
+        NormalizerContractError,
         match=(
             "normalizer physical_representation must be RepresentationIdentity or None"
         ),

@@ -6,6 +6,7 @@ from typing import Protocol
 
 from .canonical import CanonicalReleaseIdentity
 from .content import NormalizedContentIdentity
+from .contracts import NormalizerContractError
 from .detection import PlatformDetection, PlatformDetector
 from .hashing import GenericHashAdapter
 from .identity import RomIdentity
@@ -141,9 +142,13 @@ def identify_file(
                 normalized_result,
                 NormalizationResult,
             ):
-                raise TypeError(
-                    "normalizer identify() must return a "
-                    "NormalizationResult-compatible object"
+                raise NormalizerContractError(
+                    (
+                        "normalizer identify() must return a "
+                        "NormalizationResult-compatible object"
+                    ),
+                    component=type(normalizer).__name__,
+                    operation="identify",
                 )
 
             normalized_content = normalized_result.content
@@ -152,9 +157,14 @@ def identify_file(
                 normalized_content,
                 NormalizedContentIdentity,
             ):
-                raise TypeError(
-                    "normalizer content must be "
-                    "NormalizedContentIdentity"
+                raise NormalizerContractError(
+                    (
+                        "normalizer content must be "
+                        "NormalizedContentIdentity"
+                    ),
+                    component=type(normalizer).__name__,
+                    operation="identify",
+                    field="content",
                 )
 
             physical_representation = (
@@ -165,9 +175,14 @@ def identify_file(
                 physical_representation,
                 RepresentationIdentity,
             ):
-                raise TypeError(
-                    "normalizer physical_representation must be "
-                    "RepresentationIdentity or None"
+                raise NormalizerContractError(
+                    (
+                        "normalizer physical_representation must be "
+                        "RepresentationIdentity or None"
+                    ),
+                    component=type(normalizer).__name__,
+                    operation="identify",
+                    field="physical_representation",
                 )
 
             local_metadata = normalized_result.local_metadata
@@ -176,9 +191,14 @@ def identify_file(
                 local_metadata,
                 LocalContentMetadata,
             ):
-                raise TypeError(
-                    "normalizer local_metadata must be "
-                    "LocalContentMetadata or None"
+                raise NormalizerContractError(
+                    (
+                        "normalizer local_metadata must be "
+                        "LocalContentMetadata or None"
+                    ),
+                    component=type(normalizer).__name__,
+                    operation="identify",
+                    field="local_metadata",
                 )
 
             lookup = LookupIdentity(

@@ -3,6 +3,7 @@ from dataclasses import FrozenInstanceError
 import pytest
 
 from rom_metadata_framework.canonical import CanonicalReleaseIdentity
+from rom_metadata_framework.contracts import MetadataProviderContractError
 from rom_metadata_framework.metadata import (
     MetadataProvenance,
     MetadataValue,
@@ -216,10 +217,16 @@ def test_collection_rejects_misattributed_result() -> None:
     )
 
     with pytest.raises(
-        ValueError,
+        MetadataProviderContractError,
         match="result source does not match",
-    ):
+    ) as exc_info:
         collection.collect(identity())
+
+    error = exc_info.value
+
+    assert error.component == "provider-a"
+    assert error.operation == "lookup_metadata"
+    assert error.field == "provider"
 
 
 def test_provider_exception_propagates() -> None:
