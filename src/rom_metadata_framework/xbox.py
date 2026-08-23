@@ -86,7 +86,7 @@ class XboxDiscIdentity:
 
     representation: str
     content: NormalizedContentIdentity
-    metadata: LocalContentMetadata
+    local_metadata: LocalContentMetadata
     physical_representation: RepresentationIdentity
 
 
@@ -418,7 +418,7 @@ class XboxAdapter:
                     "xbe_sha256": xbe_sha256,
                 },
             ),
-            metadata=metadata,
+            local_metadata=metadata,
             physical_representation=RepresentationIdentity(
                 kind="disc-image",
                 format=("xbox-xiso" if representation == "xiso" else "xbox-full-disc"),
