@@ -91,7 +91,7 @@ class NesAdapter:
         self.allow_headerless = allow_headerless
 
     def supports(self, path: Path) -> bool:
-        """Return whether this adapter can safely claim the file."""
+        """Return whether this adapter can safely normalize the file."""
 
         path = Path(path)
 
@@ -99,15 +99,47 @@ class NesAdapter:
             return False
 
         with path.open("rb") as handle:
-            magic = handle.read(4)
+            header = handle.read(NES_HEADER_SIZE)
 
-        if magic == NES_MAGIC:
-            return True
+        if header[:4] != NES_MAGIC:
+            return (
+                self.allow_headerless
+                and path.suffix.lower() == ".nes"
+            )
 
-        return (
-            self.allow_headerless
-            and path.suffix.lower() == ".nes"
+        if len(header) != NES_HEADER_SIZE:
+            return False
+
+        flags6 = header[6]
+        flags7 = header[7]
+
+        if flags6 & 0x04:
+            return False
+
+        is_nes2 = (flags7 & 0x0C) == 0x08
+
+        if is_nes2:
+            prg_size = _nes2_rom_size(
+                lsb=header[4],
+                msb_nibble=header[9] & 0x0F,
+                unit_size=16 * 1024,
+            )
+            chr_size = _nes2_rom_size(
+                lsb=header[5],
+                msb_nibble=(header[9] >> 4) & 0x0F,
+                unit_size=8 * 1024,
+            )
+        else:
+            prg_size = header[4] * 16 * 1024
+            chr_size = header[5] * 8 * 1024
+
+        expected_size = (
+            NES_HEADER_SIZE
+            + prg_size
+            + chr_size
         )
+
+        return path.stat().st_size == expected_size
 
     def identify(self, path: Path) -> NesContentIdentity:
         """Return normalized PRG+CHR identity for one NES image."""
