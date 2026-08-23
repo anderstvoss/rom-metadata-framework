@@ -14,6 +14,7 @@ from .canonical import (
 )
 from .identity import RomIdentity
 from .platforms import UnknownPlatformError, canonical_platform_name
+from .provenance import CatalogueEvidence
 from .resolvers import MetadataResolver, ResolvedMetadata
 
 
@@ -120,6 +121,12 @@ class PlaymatchResolver:
             },
         )
 
+        catalogue_evidence = self._catalogue_evidence(
+            payload,
+            identity,
+            match_type,
+        )
+
         return CanonicalReleaseIdentity(
             release_name=release_name.strip(),
             platform=platform_name,
@@ -128,6 +135,7 @@ class PlaymatchResolver:
             source_id=game_id.strip(),
             external_ids=external_ids,
             evidence=(evidence,),
+            catalogue_evidence=catalogue_evidence,
         )
 
     def resolve(self, identity: RomIdentity) -> ResolvedMetadata | None:
@@ -208,6 +216,116 @@ class PlaymatchResolver:
             )
 
         return payload
+
+    @staticmethod
+    def _catalogue_evidence(
+        payload: dict[str, Any],
+        identity: RomIdentity,
+        match_type: str,
+    ) -> tuple[CatalogueEvidence, ...]:
+        raw_files = payload.get("gameFiles", [])
+
+        if not isinstance(raw_files, list):
+            raise PlaymatchResponseError(
+                "Playmatch gameFiles must be an array"
+            )
+
+        signature_group = payload.get("signatureGroup") or {}
+        dat_file = payload.get("datFile") or {}
+        dat_import = payload.get("datFileImport") or {}
+
+        if not isinstance(signature_group, dict):
+            raise PlaymatchResponseError(
+                "Playmatch signatureGroup must be an object"
+            )
+
+        if not isinstance(dat_file, dict):
+            raise PlaymatchResponseError(
+                "Playmatch datFile must be an object"
+            )
+
+        if not isinstance(dat_import, dict):
+            raise PlaymatchResponseError(
+                "Playmatch datFileImport must be an object"
+            )
+
+        expected: str | None
+
+        if match_type == "SHA256":
+            expected = getattr(identity.hashes, "sha256", None)
+        elif match_type == "SHA1":
+            expected = identity.hashes.sha1
+        elif match_type == "MD5":
+            expected = identity.hashes.md5
+        elif match_type == "CRC":
+            expected = identity.hashes.crc32
+        else:
+            expected = None
+
+        results: list[CatalogueEvidence] = []
+
+        for raw_file in raw_files:
+            if not isinstance(raw_file, dict):
+                raise PlaymatchResponseError(
+                    "Playmatch gameFiles entry must be an object"
+                )
+
+            provider_hash_key = {
+                "SHA256": "sha256",
+                "SHA1": "sha1",
+                "MD5": "md5",
+                "CRC": "crc",
+            }.get(match_type)
+
+            if provider_hash_key is not None and expected is not None:
+                provider_hash = raw_file.get(provider_hash_key)
+
+                if (
+                    not isinstance(provider_hash, str)
+                    or provider_hash.lower() != expected.lower()
+                ):
+                    continue
+
+            hashes = {
+                key: value
+                for key in ("crc", "md5", "sha1", "sha256")
+                if isinstance(
+                    value := raw_file.get(key),
+                    str,
+                ) and value
+            }
+
+            details: dict[str, str] = {}
+
+            for source_key, target_key in (
+                ("id", "provider_file_id"),
+                ("serial", "serial"),
+                ("lastSeenDatVersion", "last_seen_dat_version"),
+            ):
+                value = raw_file.get(source_key)
+
+                if value is not None:
+                    details[target_key] = str(value)
+
+            results.append(
+                CatalogueEvidence(
+                    source="playmatch",
+                    match_method=match_type,
+                    authority=signature_group.get("name"),
+                    catalogue_name=dat_file.get("name"),
+                    catalogue_version=dat_file.get("currentVersion"),
+                    import_version=dat_import.get("version"),
+                    file_status=raw_file.get("status"),
+                    current_in_latest_catalogue=raw_file.get(
+                        "currentInLatestDat"
+                    ),
+                    matched_file_name=raw_file.get("fileName"),
+                    hashes=hashes,
+                    details=details,
+                )
+            )
+
+        return tuple(results)
 
     @staticmethod
     def _platform_name(payload: dict[str, Any]) -> str | None:

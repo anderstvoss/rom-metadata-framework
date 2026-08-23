@@ -341,3 +341,80 @@ def test_playmatch_can_identify_platform_when_local_platform_unknown(
         result.evidence[0].details["provider_platform"]
         == "Super Nintendo Entertainment System"
     )
+
+
+def test_playmatch_preserves_catalogue_provenance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = {
+        "gameMatchType": "SHA1",
+        "game": {
+            "id": "11111111-1111-1111-1111-111111111111",
+            "name": "Super Mario World (USA)",
+        },
+        "platform": {
+            "id": "22222222-2222-2222-2222-222222222222",
+            "name": "Super Nintendo Entertainment System",
+        },
+        "signatureGroup": {
+            "id": "33333333-3333-3333-3333-333333333333",
+            "name": "No-Intro",
+        },
+        "datFile": {
+            "id": "44444444-4444-4444-4444-444444444444",
+            "name": "Nintendo - Super Nintendo Entertainment System",
+            "currentVersion": "20260614-014159",
+        },
+        "datFileImport": {
+            "id": "55555555-5555-5555-5555-555555555555",
+            "version": "20240821-143440",
+        },
+        "gameFiles": [
+            {
+                "id": "66666666-6666-6666-6666-666666666666",
+                "fileName": "Super Mario World (USA).sfc",
+                "fileSizeInBytes": 524288,
+                "crc": "b19ed489",
+                "md5": "cdd3c8c37322978ca8669b34bc89c804",
+                "sha1": (
+                    "6b47bb75d16514b6a476aa0c73a683"
+                    "a2a4c18765"
+                ),
+                "sha256": (
+                    "0838e531fe22c077528febe14cb3ff7"
+                    "c492f1f5fa8de354192bdff7137c27f5b"
+                ),
+                "status": "Verified",
+                "serial": None,
+                "currentInLatestDat": True,
+                "lastSeenDatVersion": "20260614-014159",
+            }
+        ],
+        "externalMetadata": [],
+    }
+
+    monkeypatch.setattr(
+        "rom_metadata_framework.playmatch.urlopen",
+        lambda request, timeout: FakeResponse(
+            json.dumps(payload).encode()
+        ),
+    )
+
+    result = PlaymatchResolver().identify(identity())
+
+    assert result is not None
+    assert len(result.catalogue_evidence) == 1
+
+    evidence = result.catalogue_evidence[0]
+
+    assert evidence.authority == "No-Intro"
+    assert (
+        evidence.catalogue_name
+        == "Nintendo - Super Nintendo Entertainment System"
+    )
+    assert evidence.catalogue_version == "20260614-014159"
+    assert evidence.import_version == "20240821-143440"
+    assert evidence.file_status == "verified"
+    assert evidence.current_in_latest_catalogue is True
+    assert evidence.match_method == "SHA1"
+    assert evidence.is_strong_content_match

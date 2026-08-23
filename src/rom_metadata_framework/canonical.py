@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Mapping
 
+from .provenance import CatalogueEvidence
+
 
 CONTENT_MATCH_METHODS = frozenset({
     "SHA256",
@@ -72,6 +74,7 @@ class CanonicalReleaseIdentity:
 
     external_ids: Mapping[str, str] = field(default_factory=dict)
     evidence: tuple[IdentificationEvidence, ...] = ()
+    catalogue_evidence: tuple[CatalogueEvidence, ...] = ()
     conflicts: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
