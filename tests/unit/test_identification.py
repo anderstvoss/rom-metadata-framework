@@ -135,10 +135,7 @@ def test_physical_match_is_preferred(
         resolver=resolver,
         normalizer=FakeNormalizer(
             HashSet(
-                sha1=(
-                    "0123456789abcdef0123456789abcdef"
-                    "01234567"
-                ),
+                sha1=("0123456789abcdef0123456789abcdef01234567"),
             )
         ),
     )
@@ -151,10 +148,7 @@ def test_physical_match_is_preferred(
     assert not result.matched_via_normalization
 
     assert result.platform_reconciliation is not None
-    assert (
-        result.platform_reconciliation.status.value
-        == "agreement"
-    )
+    assert result.platform_reconciliation.status.value == "agreement"
 
 
 def test_normalized_match_is_fallback(
@@ -170,10 +164,7 @@ def test_normalized_match_is_fallback(
         normalized=normalized,
     )
 
-    normalized_hash = (
-        "89abcdef0123456789abcdef01234567"
-        "89abcdef"
-    )
+    normalized_hash = "89abcdef0123456789abcdef0123456789abcdef"
 
     result = identify_file(
         path,
@@ -194,10 +185,7 @@ def test_normalized_match_is_fallback(
     assert result.normalized_content_matched
 
     assert resolver.last_lookup is not None
-    assert (
-        resolver.last_lookup.hashes.sha1
-        == normalized_hash
-    )
+    assert resolver.last_lookup.hashes.sha1 == normalized_hash
 
 
 def test_provider_only_platform_from_normalized_match(
@@ -219,23 +207,14 @@ def test_provider_only_platform_from_normalized_match(
         resolver=resolver,
         normalizer=FakeNormalizer(
             HashSet(
-                sha1=(
-                    "0123456789abcdef0123456789abcdef"
-                    "01234567"
-                ),
+                sha1=("0123456789abcdef0123456789abcdef01234567"),
             )
         ),
     )
 
     assert result.platform_reconciliation is not None
-    assert (
-        result.platform_reconciliation.status.value
-        == "provider_only"
-    )
-    assert (
-        result.platform_reconciliation.selected_platform
-        == "nes"
-    )
+    assert result.platform_reconciliation.status.value == "provider_only"
+    assert result.platform_reconciliation.selected_platform == "nes"
 
 
 def test_platform_conflict_is_preserved(
@@ -258,10 +237,7 @@ def test_platform_conflict_is_preserved(
     )
 
     assert result.platform_reconciliation is not None
-    assert (
-        result.platform_reconciliation.status.value
-        == "conflict"
-    )
+    assert result.platform_reconciliation.status.value == "conflict"
     assert result.platform_reconciliation.has_conflict
 
 
@@ -294,10 +270,7 @@ def test_normalizer_is_optional(
     assert resolver.lookup_calls == 0
 
     assert result.platform_reconciliation is not None
-    assert (
-        result.platform_reconciliation.status.value
-        == "unresolved"
-    )
+    assert result.platform_reconciliation.status.value == "unresolved"
 
 
 def verified_release(
@@ -352,10 +325,7 @@ def test_identification_verification_separates_representation_and_content(
         ),
         normalizer=FakeNormalizer(
             HashSet(
-                sha1=(
-                    "0123456789abcdef0123456789abcdef"
-                    "01234567"
-                ),
+                sha1=("0123456789abcdef0123456789abcdef01234567"),
             )
         ),
     )
@@ -398,10 +368,7 @@ def test_identification_verification_tracks_both_known_good_layers(
         ),
         normalizer=FakeNormalizer(
             HashSet(
-                sha1=(
-                    "0123456789abcdef0123456789abcdef"
-                    "01234567"
-                ),
+                sha1=("0123456789abcdef0123456789abcdef01234567"),
             )
         ),
     )
@@ -439,10 +406,7 @@ def test_redump_normalized_content_can_be_known_good(
         ),
         normalizer=FakeNormalizer(
             HashSet(
-                sha1=(
-                    "0123456789abcdef0123456789abcdef"
-                    "01234567"
-                ),
+                sha1=("0123456789abcdef0123456789abcdef01234567"),
             )
         ),
     )
@@ -469,9 +433,7 @@ def test_identification_skips_normalized_lookup_when_router_has_no_match(
             return False
 
         def identify(self, path: Path):
-            raise AssertionError(
-                "unsupported normalizer must not identify"
-            )
+            raise AssertionError("unsupported normalizer must not identify")
 
     path = tmp_path / "unknown.bin"
     path.write_bytes(b"unknown-content")
@@ -486,9 +448,7 @@ def test_identification_skips_normalized_lookup_when_router_has_no_match(
         path,
         detector=detector,
         resolver=resolver,
-        normalizer=CompositeNormalizer(
-            (UnsupportedNormalizer(),)
-        ),
+        normalizer=CompositeNormalizer((UnsupportedNormalizer(),)),
     )
 
     assert result.normalized_content is None
@@ -515,9 +475,7 @@ def test_identification_propagates_ambiguous_normalizer(
 
         def identify(self, path: Path):
             self.identify_calls += 1
-            raise AssertionError(
-                "ambiguous normalizer must not identify"
-            )
+            raise AssertionError("ambiguous normalizer must not identify")
 
     path = tmp_path / "ambiguous.bin"
     path.write_bytes(b"ambiguous-content")
@@ -537,9 +495,7 @@ def test_identification_propagates_ambiguous_normalizer(
             path,
             detector=FakeDetector(None),
             resolver=resolver,
-            normalizer=CompositeNormalizer(
-                (first, second)
-            ),
+            normalizer=CompositeNormalizer((first, second)),
         )
 
     assert exc_info.value.adapter_names == (
@@ -578,9 +534,7 @@ def test_identification_propagates_terminal_normalizer_probe_failure(
         def probe(self, path: Path) -> NormalizerProbe:
             return NormalizerProbe(
                 normalizer=self.name,
-                status=(
-                    NormalizerProbeStatus.BACKEND_UNAVAILABLE
-                ),
+                status=(NormalizerProbeStatus.BACKEND_UNAVAILABLE),
                 reason="backend unavailable",
             )
 
@@ -588,9 +542,7 @@ def test_identification_propagates_terminal_normalizer_probe_failure(
             return False
 
         def identify(self, path: Path):
-            raise AssertionError(
-                "failed normalizer must not identify"
-            )
+            raise AssertionError("failed normalizer must not identify")
 
     path = tmp_path / "source.bin"
     path.write_bytes(b"source")
@@ -607,9 +559,7 @@ def test_identification_propagates_terminal_normalizer_probe_failure(
             path,
             detector=FakeDetector(None),
             resolver=resolver,
-            normalizer=CompositeNormalizer(
-                (FailedNormalizer(),)
-            ),
+            normalizer=CompositeNormalizer((FailedNormalizer(),)),
         )
 
     # Physical provider lookup remains provider-first.
@@ -643,19 +593,13 @@ def test_identification_reconciles_same_release_from_different_records(
         ),
         normalizer=FakeNormalizer(
             HashSet(
-                sha1=(
-                    "0123456789abcdef0123456789abcdef"
-                    "01234567"
-                ),
+                sha1=("0123456789abcdef0123456789abcdef01234567"),
             )
         ),
     )
 
     assert result.release_reconciliation is not None
-    assert (
-        result.release_reconciliation.status.value
-        == "agreement"
-    )
+    assert result.release_reconciliation.status.value == "agreement"
     assert result.canonical_match is physical
 
 
@@ -678,27 +622,18 @@ def test_provider_release_conflict_blocks_canonical_match(
         ),
         normalizer=FakeNormalizer(
             HashSet(
-                sha1=(
-                    "0123456789abcdef0123456789abcdef"
-                    "01234567"
-                ),
+                sha1=("0123456789abcdef0123456789abcdef01234567"),
             )
         ),
     )
 
     assert result.release_reconciliation is not None
-    assert (
-        result.release_reconciliation.status.value
-        == "release_conflict"
-    )
+    assert result.release_reconciliation.status.value == "release_conflict"
     assert result.release_reconciliation.has_conflict
     assert result.canonical_match is None
 
     assert result.platform_reconciliation is not None
-    assert (
-        result.platform_reconciliation.status.value
-        == "agreement"
-    )
+    assert result.platform_reconciliation.status.value == "agreement"
 
 
 def test_provider_platform_conflict_blocks_canonical_match(
@@ -716,27 +651,18 @@ def test_provider_platform_conflict_blocks_canonical_match(
         ),
         normalizer=FakeNormalizer(
             HashSet(
-                sha1=(
-                    "0123456789abcdef0123456789abcdef"
-                    "01234567"
-                ),
+                sha1=("0123456789abcdef0123456789abcdef01234567"),
             )
         ),
     )
 
     assert result.release_reconciliation is not None
-    assert (
-        result.release_reconciliation.status.value
-        == "platform_conflict"
-    )
+    assert result.release_reconciliation.status.value == "platform_conflict"
     assert result.release_reconciliation.has_conflict
     assert result.canonical_match is None
 
     assert result.platform_reconciliation is not None
-    assert (
-        result.platform_reconciliation.status.value
-        == "local_only"
-    )
+    assert result.platform_reconciliation.status.value == "local_only"
 
 
 def test_normalized_only_release_reconciliation(
@@ -756,19 +682,13 @@ def test_normalized_only_release_reconciliation(
         ),
         normalizer=FakeNormalizer(
             HashSet(
-                sha1=(
-                    "0123456789abcdef0123456789abcdef"
-                    "01234567"
-                ),
+                sha1=("0123456789abcdef0123456789abcdef01234567"),
             )
         ),
     )
 
     assert result.release_reconciliation is not None
-    assert (
-        result.release_reconciliation.status.value
-        == "normalized_only"
-    )
+    assert result.release_reconciliation.status.value == "normalized_only"
     assert result.canonical_match is normalized
 
 
@@ -817,10 +737,7 @@ def test_known_bad_physical_vetoes_known_good_normalized_naming(
         ),
         normalizer=FakeNormalizer(
             HashSet(
-                sha1=(
-                    "0123456789abcdef0123456789abcdef"
-                    "01234567"
-                ),
+                sha1=("0123456789abcdef0123456789abcdef01234567"),
             )
         ),
     )
@@ -829,10 +746,7 @@ def test_known_bad_physical_vetoes_known_good_normalized_naming(
 
     assert verification.physical is not None
     assert verification.normalized is not None
-    assert (
-        verification.physical.status.value
-        == "known_bad"
-    )
+    assert verification.physical.status.value == "known_bad"
     assert verification.normalized_known_good
     assert verification.content_known_good
     assert verification.has_known_bad
@@ -859,10 +773,7 @@ def test_known_bad_normalized_vetoes_known_good_physical_naming(
         ),
         normalizer=FakeNormalizer(
             HashSet(
-                sha1=(
-                    "0123456789abcdef0123456789abcdef"
-                    "01234567"
-                ),
+                sha1=("0123456789abcdef0123456789abcdef01234567"),
             )
         ),
     )
@@ -871,10 +782,7 @@ def test_known_bad_normalized_vetoes_known_good_physical_naming(
 
     assert verification.physical_known_good
     assert verification.normalized is not None
-    assert (
-        verification.normalized.status.value
-        == "known_bad"
-    )
+    assert verification.normalized.status.value == "known_bad"
     assert verification.content_known_good
     assert verification.has_known_bad
     assert not verification.safe_for_canonical_naming
@@ -910,10 +818,7 @@ def test_release_conflict_vetoes_known_good_naming(
         ),
         normalizer=FakeNormalizer(
             HashSet(
-                sha1=(
-                    "0123456789abcdef0123456789abcdef"
-                    "01234567"
-                ),
+                sha1=("0123456789abcdef0123456789abcdef01234567"),
             )
         ),
     )
@@ -954,10 +859,7 @@ def test_agreeing_known_good_paths_remain_safe_for_naming(
         ),
         normalizer=FakeNormalizer(
             HashSet(
-                sha1=(
-                    "0123456789abcdef0123456789abcdef"
-                    "01234567"
-                ),
+                sha1=("0123456789abcdef0123456789abcdef01234567"),
             )
         ),
     )
@@ -968,3 +870,160 @@ def test_agreeing_known_good_paths_remain_safe_for_naming(
     assert not verification.has_known_bad
     assert not verification.has_conflicts
     assert verification.safe_for_canonical_naming
+
+
+def test_identification_preserves_normalizer_local_metadata(
+    tmp_path: Path,
+) -> None:
+    from rom_metadata_framework.local_metadata import (
+        LocalContentMetadata,
+    )
+
+    class MetadataResult:
+        def __init__(
+            self,
+            content: NormalizedContentIdentity,
+            local_metadata: LocalContentMetadata,
+        ) -> None:
+            self.content = content
+            self.local_metadata = local_metadata
+
+    class MetadataNormalizer:
+        def identify(
+            self,
+            path: Path,
+        ) -> MetadataResult:
+            return MetadataResult(
+                NormalizedContentIdentity(
+                    kind="cartridge",
+                    hashes=HashSet(
+                        sha1=("0123456789abcdef0123456789abcdef01234567"),
+                    ),
+                ),
+                LocalContentMetadata(
+                    platform="nes",
+                    hardware={
+                        "mapper": "4",
+                    },
+                ),
+            )
+
+    path = tmp_path / "game.nes"
+    path.write_bytes(b"physical-bytes")
+
+    resolver = FakeResolver(
+        physical=None,
+        normalized=None,
+    )
+
+    result = identify_file(
+        path,
+        detector=FakeDetector("nes"),
+        resolver=resolver,
+        normalizer=MetadataNormalizer(),
+    )
+
+    assert result.local_metadata is not None
+    assert result.local_metadata.platform == "nes"
+    assert result.local_metadata.hardware["mapper"] == "4"
+
+    # Local metadata does not change provider lookup behavior.
+    assert resolver.identify_calls == 1
+    assert resolver.lookup_calls == 1
+
+
+def test_identification_legacy_normalizer_has_no_local_metadata(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "legacy.bin"
+    path.write_bytes(b"physical-bytes")
+
+    resolver = FakeResolver(
+        physical=None,
+        normalized=None,
+    )
+
+    result = identify_file(
+        path,
+        detector=FakeDetector(None),
+        resolver=resolver,
+        normalizer=FakeNormalizer(
+            HashSet(
+                sha1=("0123456789abcdef0123456789abcdef01234567"),
+            )
+        ),
+    )
+
+    assert result.normalized_content is not None
+    assert result.local_metadata is None
+    assert resolver.identify_calls == 1
+    assert resolver.lookup_calls == 1
+
+
+def test_identification_without_normalizer_has_no_local_metadata(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "physical.bin"
+    path.write_bytes(b"physical-bytes")
+
+    resolver = FakeResolver(
+        physical=None,
+        normalized=None,
+    )
+
+    result = identify_file(
+        path,
+        detector=FakeDetector(None),
+        resolver=resolver,
+    )
+
+    assert result.local_metadata is None
+    assert resolver.identify_calls == 1
+    assert resolver.lookup_calls == 0
+
+
+def test_identification_rejects_invalid_local_metadata_result(
+    tmp_path: Path,
+) -> None:
+    import pytest
+
+    class InvalidMetadataResult:
+        def __init__(self) -> None:
+            self.content = NormalizedContentIdentity(
+                kind="cartridge",
+            )
+            self.local_metadata = {
+                "platform": "nes",
+            }
+
+    class InvalidMetadataNormalizer:
+        def identify(
+            self,
+            path: Path,
+        ) -> InvalidMetadataResult:
+            return InvalidMetadataResult()
+
+    path = tmp_path / "invalid.bin"
+    path.write_bytes(b"physical-bytes")
+
+    resolver = FakeResolver(
+        physical=None,
+        normalized=None,
+    )
+
+    with pytest.raises(
+        TypeError,
+        match="normalizer local_metadata",
+    ):
+        identify_file(
+            path,
+            detector=FakeDetector(None),
+            resolver=resolver,
+            normalizer=InvalidMetadataNormalizer(),
+        )
+
+    # Physical lookup must still have happened before normalization.
+    assert resolver.identify_calls == 1
+
+    # Invalid local evidence prevents normalized lookup.
+    assert resolver.lookup_calls == 0

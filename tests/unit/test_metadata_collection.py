@@ -26,7 +26,6 @@ def identity() -> CanonicalReleaseIdentity:
     )
 
 
-
 class Provider:
     def __init__(
         self,
@@ -48,7 +47,6 @@ class Provider:
         return self.result
 
 
-
 def result(
     provider: str,
     provider_id: str,
@@ -58,7 +56,6 @@ def result(
         provider_id=provider_id,
         metadata=ReleaseMetadata(),
     )
-
 
 
 def test_empty_collection_returns_empty_report() -> None:
@@ -187,14 +184,8 @@ def test_collection_preserves_independent_provider_evidence() -> None:
     report = collection.collect(identity())
 
     assert len(report.results) == 2
-    assert (
-        report.results[0].metadata.developers[0].value
-        == "Studio A"
-    )
-    assert (
-        report.results[1].metadata.developers[0].value
-        == "Studio B"
-    )
+    assert report.results[0].metadata.developers[0].value == "Studio A"
+    assert report.results[1].metadata.developers[0].value == "Studio B"
 
 
 def test_collection_rejects_empty_provider_name() -> None:
@@ -303,3 +294,179 @@ def test_collection_report_requires_complete_partition() -> None:
             unmatched=(),
             results=(result("provider-a", "1"),),
         )
+
+
+def test_enrichment_preserves_local_and_provider_metadata_separately() -> None:
+    from rom_metadata_framework.detection import PlatformDetection
+    from rom_metadata_framework.identification import IdentificationResult
+    from rom_metadata_framework.identity import RomIdentity
+    from rom_metadata_framework.local_metadata import LocalContentMetadata
+    from rom_metadata_framework.metadata import (
+        MetadataProvenance,
+        MetadataValue,
+        ReleaseMetadata,
+    )
+    from rom_metadata_framework.metadata_collection import (
+        collect_identification_metadata,
+    )
+    from rom_metadata_framework.metadata_provider import (
+        MetadataProviderResult,
+    )
+
+    canonical = identity()
+    local = LocalContentMetadata(
+        platform="nes",
+        hardware={
+            "mapper": "4",
+        },
+    )
+
+    observed = {}
+
+    class Provider:
+        name = "provider-a"
+
+        def lookup_metadata(self, release):
+            observed["identity"] = release
+
+            return MetadataProviderResult(
+                provider=self.name,
+                provider_id="record-1",
+                metadata=ReleaseMetadata(
+                    titles=(
+                        MetadataValue(
+                            value="Provider Title",
+                            provenance=MetadataProvenance(
+                                source=self.name,
+                                source_id="record-1",
+                            ),
+                        ),
+                    ),
+                ),
+            )
+
+    identification = IdentificationResult(
+        physical_identity=RomIdentity(),
+        platform_detection=PlatformDetection(),
+        physical_match=canonical,
+        local_metadata=local,
+    )
+
+    result = collect_identification_metadata(
+        identification,
+        MetadataProviderCollection(
+            providers=(Provider(),),
+        ),
+    )
+
+    assert result.identification is identification
+    assert result.canonical_identity is canonical
+    assert result.local_metadata is local
+
+    assert result.provider_report is not None
+    assert result.provider_report.matched == ("provider-a",)
+    assert len(result.provider_results) == 1
+    assert result.provider_results[0].metadata.titles[0].value == "Provider Title"
+
+    # Provider lookup receives only the canonical release identity.
+    assert observed["identity"] is canonical
+
+    # Local evidence remains independently represented.
+    assert result.local_metadata.hardware["mapper"] == "4"
+
+
+def test_enrichment_without_canonical_match_keeps_local_metadata() -> None:
+    from rom_metadata_framework.detection import PlatformDetection
+    from rom_metadata_framework.identification import IdentificationResult
+    from rom_metadata_framework.identity import RomIdentity
+    from rom_metadata_framework.local_metadata import LocalContentMetadata
+    from rom_metadata_framework.metadata_collection import (
+        collect_identification_metadata,
+    )
+
+    calls = []
+
+    class Provider:
+        name = "provider-a"
+
+        def lookup_metadata(self, release):
+            calls.append(release)
+            raise AssertionError("provider must not run without canonical identity")
+
+    local = LocalContentMetadata(
+        platform="nes",
+        media={
+            "representation": "ines",
+        },
+    )
+
+    identification = IdentificationResult(
+        physical_identity=RomIdentity(),
+        platform_detection=PlatformDetection(),
+        local_metadata=local,
+    )
+
+    result = collect_identification_metadata(
+        identification,
+        MetadataProviderCollection(
+            providers=(Provider(),),
+        ),
+    )
+
+    assert result.canonical_identity is None
+    assert result.local_metadata is local
+    assert result.provider_report is None
+    assert result.provider_results == ()
+    assert calls == []
+
+
+def test_enrichment_uses_reconciled_canonical_identity() -> None:
+    from rom_metadata_framework.detection import PlatformDetection
+    from rom_metadata_framework.identification import IdentificationResult
+    from rom_metadata_framework.identity import RomIdentity
+    from rom_metadata_framework.metadata_collection import (
+        collect_identification_metadata,
+    )
+
+    physical = CanonicalReleaseIdentity(
+        release_name="Example Game (USA)",
+        platform="nes",
+        source="physical-catalogue",
+        source_id="physical-release",
+    )
+    normalized = CanonicalReleaseIdentity(
+        release_name="Example Game (USA)",
+        platform="nes",
+        source="normalized-catalogue",
+        source_id="normalized-release",
+    )
+
+    observed = []
+
+    class Provider:
+        name = "provider-a"
+
+        def lookup_metadata(self, release):
+            observed.append(release)
+
+    identification = IdentificationResult(
+        physical_identity=RomIdentity(),
+        platform_detection=PlatformDetection(),
+        physical_match=physical,
+        normalized_match=normalized,
+    )
+
+    result = collect_identification_metadata(
+        identification,
+        MetadataProviderCollection(
+            providers=(Provider(),),
+        ),
+    )
+
+    assert result.canonical_identity is physical
+    assert observed == [physical]
+
+    assert result.provider_report is not None
+    assert result.provider_report.attempted == ("provider-a",)
+    assert result.provider_report.unmatched == ("provider-a",)
+    assert result.provider_results == ()
