@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+echo "===== SHELL SYNTAX ====="
+
+for file in scripts/*; do
+    bash -n "$file"
+done
+
+echo "Shell syntax passed."
+
+echo
+echo "===== STAGED WHITESPACE ====="
+
+git diff --cached --check
+
+echo "Staged whitespace check passed."
+
+echo
+echo "===== UNSTAGED WHITESPACE ====="
+
+git diff --check
+
+echo "Unstaged whitespace check passed."
+
+echo
+echo "===== PUBLIC DISCLOSURE ====="
+
+./scripts/check-public-disclosure
+
+echo
+echo "===== REPOSITORY CONTENT ====="
+
+./scripts/check-repository-files
+
+echo
+echo "===== ADAPTER PROVENANCE ====="
+
+./scripts/check-adapter-provenance
+
+echo
+echo "===== GITLEAKS WORKTREE ====="
+
+gitleaks detect \
+    --source . \
+    --no-git \
+    --no-banner \
+    --redact
+
+echo
+echo "===== RESULT ====="
+
+echo "Pre-public working-tree checks passed."

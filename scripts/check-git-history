@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+if ! git rev-parse --verify HEAD >/dev/null 2>&1; then
+    echo "No commits exist yet; Git history scan is not applicable."
+    exit 0
+fi
+
+echo "===== GITLEAKS FULL HISTORY ====="
+
+gitleaks detect \
+    --source . \
+    --no-banner \
+    --redact
+
+echo
+echo "Git history scan passed."

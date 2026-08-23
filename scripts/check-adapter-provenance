@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+failure=0
+
+for adapter in adapters/*; do
+    [ -d "$adapter" ] || continue
+
+    name="$(basename "$adapter")"
+
+    if ! find "$adapter" -mindepth 1 -type f -print -quit | grep -q .; then
+        continue
+    fi
+
+    if [ ! -f "$adapter/UPSTREAM.md" ]; then
+        echo "FAIL: adapter '$name' is missing UPSTREAM.md"
+        failure=1
+    fi
+
+    if [ ! -f "$adapter/provenance.yaml" ]; then
+        echo "FAIL: adapter '$name' is missing provenance.yaml"
+        failure=1
+        continue
+    fi
+
+    method="$(
+        sed -n \
+            's/^[[:space:]]*method:[[:space:]]*"\{0,1\}\([^"]*\)"\{0,1\}[[:space:]]*$/\1/p' \
+            "$adapter/provenance.yaml" \
+            | head -n 1
+    )"
+
+    redistributed="$(
+        sed -n \
+            's/^[[:space:]]*redistributed:[[:space:]]*\([^[:space:]]*\).*$/\1/p' \
+            "$adapter/provenance.yaml" \
+            | head -n 1
+    )"
+
+    case "$method" in
+        embedded-source|translated-source)
+            if [ ! -f "$adapter/LICENSE.upstream" ]; then
+                echo "FAIL: source-derived adapter '$name' is missing LICENSE.upstream"
+                failure=1
+            fi
+            ;;
+    esac
+
+    if [ "$redistributed" = "true" ] && [ ! -f "$adapter/LICENSE.upstream" ]; then
+        echo "FAIL: redistributing adapter '$name' is missing LICENSE.upstream"
+        failure=1
+    fi
+done
+
+if (( failure != 0 )); then
+    echo
+    echo "Adapter provenance scan FAILED."
+    exit 1
+fi
+
+echo "Adapter provenance scan passed."

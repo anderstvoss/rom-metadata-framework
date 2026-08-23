@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+failure=0
+
+is_prohibited_extension() {
+    case "$1" in
+        *.iso|*.xiso|*.wbfs|*.rvz|*.gcz|*.wia|*.chd|*.cue|*.bin|\
+        *.rom|*.nes|*.sfc|*.smc|*.gb|*.gbc|*.gba|*.nds|*.3ds|*.cia|\
+        *.wad|*.dol|*.xbe|*.xex|*.pkg)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+while IFS= read -r -d '' file; do
+    if [ ! -f "$file" ]; then
+        continue
+    fi
+
+    size="$(stat -c '%s' "$file")"
+
+    if (( size > 5242880 )); then
+        printf 'FAIL: tracked file exceeds 5 MiB: %s (%s bytes)\n' \
+            "$file" "$size"
+        failure=1
+    fi
+
+    if is_prohibited_extension "$file"; then
+        printf 'FAIL: prohibited game/disc artifact tracked: %s\n' \
+            "$file"
+        failure=1
+    fi
+done < <(git ls-files -z)
+
+if (( failure != 0 )); then
+    echo
+    echo "Repository content scan FAILED."
+    exit 1
+fi
+
+echo "Repository content scan passed."

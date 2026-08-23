@@ -1,0 +1,25 @@
+ROM Metadata Framework
+
+This repository contains original framework code licensed under the MIT
+License unless otherwise noted.
+
+The project may integrate with independently installed third-party tools,
+libraries, emulators, and metadata services.
+
+Third-party projects retain their own copyrights and licenses.
+
+External dependencies are not included in this repository unless explicitly
+documented.
+
+Planned or potential integrations include projects such as:
+
+- Dolphin Emulator
+- extract-xiso
+- rcheevos
+- platform-specific inspection utilities
+- metadata providers and databases
+
+Use of a project name does not imply ownership, endorsement, or redistribution.
+
+Each material integration must document its upstream source, license,
+integration method, supported versions, and redistribution status.

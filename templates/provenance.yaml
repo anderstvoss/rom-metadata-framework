@@ -1,0 +1,20 @@
+upstream:
+  project: ""
+  repository: ""
+  revision: ""
+  license: ""
+  supported_versions: ""
+
+integration:
+  method: ""
+  dependency: ""
+  redistributed: false
+  required: false
+  description: ""
+
+derived_files: []
+
+modifications: []
+
+review:
+  last_reviewed: ""

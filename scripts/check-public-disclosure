@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+failure=0
+
+scan_pattern() {
+    local description="$1"
+    local pattern="$2"
+
+    if git grep -nEI \
+        "$pattern" \
+        -- \
+        ':!scripts/check-public-disclosure'
+    then
+        echo
+        echo "FAIL: ${description}"
+        failure=1
+    fi
+}
+
+echo "Checking tracked text for environment-specific disclosure..."
+
+scan_pattern \
+    "RFC1918 private IPv4 address" \
+    '(^|[^0-9])(10\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}|192\.168\.[0-9]{1,3}\.[0-9]{1,3}|172\.(1[6-9]|2[0-9]|3[01])\.[0-9]{1,3}\.[0-9]{1,3})([^0-9]|$)'
+
+scan_pattern \
+    "development/homelab hostname" \
+    '\b(inconel|elinvar|truenas|elinvar-docker-gpu-01)\b'
+
+scan_pattern \
+    "local Linux username" \
+    '\banton\b'
+
+scan_pattern \
+    "local home directory" \
+    '/home/[A-Za-z0-9._-]+'
+
+scan_pattern \
+    "homelab-specific filesystem path" \
+    '(/mnt/truenas|/srv/docker|/opt/docker|/etc/homelab-docs)'
+
+scan_pattern \
+    "GitHub token prefix" \
+    'gh[pousr]_[A-Za-z0-9_]+'
+
+scan_pattern \
+    "AWS access-key prefix" \
+    'AKIA[0-9A-Z]{16}'
+
+if (( failure != 0 )); then
+    echo
+    echo "Public-disclosure scan FAILED."
+    exit 1
+fi
+
+echo "Public-disclosure scan passed."
