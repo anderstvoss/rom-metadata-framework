@@ -69,6 +69,10 @@ class RomIdentity:
 
     platform: str | None = None
     format: str | None = None
+
+    file_name: str | None = None
+    file_size: int | None = None
+
     hashes: HashSet = field(default_factory=HashSet)
 
     serial: str | None = None
@@ -81,11 +85,28 @@ class RomIdentity:
     adapter: AdapterProvenance | None = None
 
     def __post_init__(self) -> None:
-        for name in ("platform", "format", "serial", "product_code", "title_id"):
+        for name in (
+            "platform",
+            "format",
+            "file_name",
+            "serial",
+            "product_code",
+            "title_id",
+        ):
             value = getattr(self, name)
 
             if value is not None:
                 object.__setattr__(self, name, value.strip() or None)
+
+        if self.file_size is not None:
+            if isinstance(self.file_size, bool) or not isinstance(
+                self.file_size,
+                int,
+            ):
+                raise TypeError("file_size must be an integer or None")
+
+            if self.file_size < 0:
+                raise ValueError("file_size must not be negative")
 
         normalized_identifiers: dict[str, str] = {}
 

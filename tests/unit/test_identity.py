@@ -133,3 +133,23 @@ def test_generic_md5_and_specialized_identifier_remain_distinct() -> None:
 
     assert identity.hashes.md5 == value
     assert identity.specialized_identifiers["retroachievements"] == value
+
+
+def test_identity_normalizes_source_file_metadata() -> None:
+    identity = RomIdentity(
+        file_name="  game.sfc  ",
+        file_size=1234,
+    )
+
+    assert identity.file_name == "game.sfc"
+    assert identity.file_size == 1234
+
+
+def test_identity_rejects_negative_file_size() -> None:
+    with pytest.raises(ValueError):
+        RomIdentity(file_size=-1)
+
+
+def test_identity_rejects_non_integer_file_size() -> None:
+    with pytest.raises(TypeError):
+        RomIdentity(file_size="123")  # type: ignore[arg-type]

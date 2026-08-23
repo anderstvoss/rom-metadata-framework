@@ -123,6 +123,8 @@ class RcheevosAdapter:
         return RomIdentity(
             platform=self.platform,
             format=path.suffix.lower().lstrip(".") or None,
+            file_name=path.name,
+            file_size=path.stat().st_size,
             specialized_identifiers={
                 RCHEEVOS_IDENTIFIER_NAMESPACE: identifier,
             },

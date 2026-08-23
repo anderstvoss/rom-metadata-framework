@@ -83,6 +83,8 @@ def test_rcheevos_adapter_identifies_specialized_hash(
     assert identity.hashes.md5 is None
 
     assert identity.adapter is not None
+    assert identity.file_name == rom.name
+    assert identity.file_size == rom.stat().st_size
     assert identity.adapter.name == "rcheevos"
     assert identity.adapter.version == "12.4"
     assert identity.adapter.backend == "rom-metadata-rcheevos"
