@@ -250,16 +250,49 @@ def test_invalid_header_json_is_rejected(
         ).identify(image)
 
 
-def test_supports_regular_file(tmp_path: Path) -> None:
+def test_supports_valid_dolphin_disc(
+    tmp_path: Path,
+) -> None:
+    helper = write_fake_dolphin(
+        tmp_path / "dolphin-tool",
+        header=GC_HEADER,
+    )
+
     image = tmp_path / "disc.rvz"
     image.write_bytes(b"synthetic-rvz")
 
-    adapter = DolphinAdapter()
+    adapter = DolphinAdapter(
+        executable=str(helper),
+    )
 
-    assert adapter.supports(image) is True
-    assert adapter.supports(
+    assert adapter.supports(image)
+    assert not adapter.supports(
         tmp_path / "missing.rvz"
-    ) is False
+    )
+
+
+def test_dolphin_does_not_claim_unparseable_regular_file(
+    tmp_path: Path,
+) -> None:
+    helper = tmp_path / "dolphin-tool"
+
+    helper.write_text(
+        "#!/bin/sh\n"
+        "if [ \"$1\" = \"header\" ]; then\n"
+        "  exit 2\n"
+        "fi\n"
+        "exit 2\n"
+    )
+    helper.chmod(0o755)
+
+    path = tmp_path / "unrelated.bin"
+    path.write_bytes(b"not-a-disc")
+
+    adapter = DolphinAdapter(
+        executable=str(helper),
+    )
+
+    assert not adapter.supports(path)
 
 
 def test_dolphin_platform_detector_detects_gamecube(

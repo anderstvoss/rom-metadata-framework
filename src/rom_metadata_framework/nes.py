@@ -104,7 +104,10 @@ class NesAdapter:
         if magic == NES_MAGIC:
             return True
 
-        return self.allow_headerless
+        return (
+            self.allow_headerless
+            and path.suffix.lower() == ".nes"
+        )
 
     def identify(self, path: Path) -> NesContentIdentity:
         """Return normalized PRG+CHR identity for one NES image."""
