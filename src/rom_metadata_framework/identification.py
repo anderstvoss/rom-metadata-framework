@@ -14,6 +14,10 @@ from .reconciliation import (
     PlatformReconciliation,
     reconcile_platform,
 )
+from .release_reconciliation import (
+    ReleaseReconciliation,
+    reconcile_release_matches,
+)
 from .routing import NoSupportingNormalizerError
 from .verification import (
     DEFAULT_VERIFICATION_POLICY,
@@ -73,16 +77,22 @@ class IdentificationResult:
     normalized_content: NormalizedContentIdentity | None = None
     normalized_match: CanonicalReleaseIdentity | None = None
 
+    release_reconciliation: ReleaseReconciliation | None = None
     platform_reconciliation: PlatformReconciliation | None = None
 
     @property
     def canonical_match(self) -> CanonicalReleaseIdentity | None:
         """Return the strongest available canonical release match."""
 
-        if self.physical_match is not None:
-            return self.physical_match
+        reconciliation = self.release_reconciliation
 
-        return self.normalized_match
+        if reconciliation is None:
+            reconciliation = reconcile_release_matches(
+                self.physical_match,
+                self.normalized_match,
+            )
+
+        return reconciliation.selected
 
     @property
     def matched_via_normalization(self) -> bool:
@@ -148,12 +158,21 @@ def identify_file(
                 lookup
             )
 
+    release_reconciliation = reconcile_release_matches(
+        physical_match,
+        normalized_match,
+    )
+
     provider_platform = None
 
-    if physical_match is not None:
+    if (
+        physical_match is not None
+        and normalized_match is not None
+        and physical_match.platform == normalized_match.platform
+    ):
         provider_platform = physical_match.platform
-    elif normalized_match is not None:
-        provider_platform = normalized_match.platform
+    elif release_reconciliation.selected is not None:
+        provider_platform = release_reconciliation.selected.platform
 
     reconciliation = reconcile_platform(
         platform_detection,
@@ -166,6 +185,7 @@ def identify_file(
         physical_match=physical_match,
         normalized_content=normalized_content,
         normalized_match=normalized_match,
+        release_reconciliation=release_reconciliation,
         platform_reconciliation=reconciliation,
     )
 
@@ -176,6 +196,7 @@ class IdentificationVerification:
 
     physical: VerificationReport | None = None
     normalized: VerificationReport | None = None
+    release_reconciliation: ReleaseReconciliation | None = None
 
     @property
     def physical_known_good(self) -> bool:
@@ -207,10 +228,23 @@ class IdentificationVerification:
         return self.physical_known_good
 
     @property
-    def has_conflicts(self) -> bool:
-        """Whether either verification path contains a conflict."""
+    def has_known_bad(self) -> bool:
+        """Whether either verification path identifies known-bad content."""
 
         return any(
+            report is not None
+            and report.status is VerificationStatus.KNOWN_BAD
+            for report in (
+                self.physical,
+                self.normalized,
+            )
+        )
+
+    @property
+    def has_conflicts(self) -> bool:
+        """Whether verification or release reconciliation conflicts exist."""
+
+        verification_conflict = any(
             report is not None
             and report.status is VerificationStatus.CONFLICT
             for report in (
@@ -219,15 +253,22 @@ class IdentificationVerification:
             )
         )
 
+        release_conflict = bool(
+            self.release_reconciliation is not None
+            and self.release_reconciliation.has_conflict
+        )
+
+        return verification_conflict or release_conflict
+
     @property
     def safe_for_canonical_naming(self) -> bool:
         """Whether verified content may safely supply a canonical name."""
 
         return (
             self.content_known_good
+            and not self.has_known_bad
             and not self.has_conflicts
         )
-
 
 def verify_identification(
     result: IdentificationResult,
@@ -259,4 +300,5 @@ def verify_identification(
     return IdentificationVerification(
         physical=physical_report,
         normalized=normalized_report,
+        release_reconciliation=result.release_reconciliation,
     )

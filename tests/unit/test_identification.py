@@ -103,12 +103,15 @@ class FakeResolver:
 def release(
     *,
     platform: str = "nes",
+    release_name: str = "Example Game (USA)",
+    source: str = "test",
+    source_id: str = "example",
 ) -> CanonicalReleaseIdentity:
     return CanonicalReleaseIdentity(
-        release_name="Example Game (USA)",
+        release_name=release_name,
         platform=platform,
-        source="test",
-        source_id="example",
+        source=source,
+        source_id=source_id,
     )
 
 
@@ -614,3 +617,354 @@ def test_identification_propagates_terminal_normalizer_probe_failure(
 
     # No normalized provider lookup can occur.
     assert resolver.lookup_calls == 0
+
+
+def test_identification_reconciles_same_release_from_different_records(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "example.nes"
+    path.write_bytes(b"physical-bytes")
+
+    physical = release(
+        source="headered-catalogue",
+        source_id="physical-record",
+    )
+    normalized = release(
+        source="headerless-catalogue",
+        source_id="normalized-record",
+    )
+
+    result = identify_file(
+        path,
+        detector=FakeDetector("nes"),
+        resolver=FakeResolver(
+            physical=physical,
+            normalized=normalized,
+        ),
+        normalizer=FakeNormalizer(
+            HashSet(
+                sha1=(
+                    "0123456789abcdef0123456789abcdef"
+                    "01234567"
+                ),
+            )
+        ),
+    )
+
+    assert result.release_reconciliation is not None
+    assert (
+        result.release_reconciliation.status.value
+        == "agreement"
+    )
+    assert result.canonical_match is physical
+
+
+def test_provider_release_conflict_blocks_canonical_match(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "conflict.nes"
+    path.write_bytes(b"physical-bytes")
+
+    result = identify_file(
+        path,
+        detector=FakeDetector("nes"),
+        resolver=FakeResolver(
+            physical=release(
+                release_name="Game A (USA)",
+            ),
+            normalized=release(
+                release_name="Game B (USA)",
+            ),
+        ),
+        normalizer=FakeNormalizer(
+            HashSet(
+                sha1=(
+                    "0123456789abcdef0123456789abcdef"
+                    "01234567"
+                ),
+            )
+        ),
+    )
+
+    assert result.release_reconciliation is not None
+    assert (
+        result.release_reconciliation.status.value
+        == "release_conflict"
+    )
+    assert result.release_reconciliation.has_conflict
+    assert result.canonical_match is None
+
+    assert result.platform_reconciliation is not None
+    assert (
+        result.platform_reconciliation.status.value
+        == "agreement"
+    )
+
+
+def test_provider_platform_conflict_blocks_canonical_match(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "platform-conflict.bin"
+    path.write_bytes(b"physical-bytes")
+
+    result = identify_file(
+        path,
+        detector=FakeDetector("nes"),
+        resolver=FakeResolver(
+            physical=release(platform="nes"),
+            normalized=release(platform="snes"),
+        ),
+        normalizer=FakeNormalizer(
+            HashSet(
+                sha1=(
+                    "0123456789abcdef0123456789abcdef"
+                    "01234567"
+                ),
+            )
+        ),
+    )
+
+    assert result.release_reconciliation is not None
+    assert (
+        result.release_reconciliation.status.value
+        == "platform_conflict"
+    )
+    assert result.release_reconciliation.has_conflict
+    assert result.canonical_match is None
+
+    assert result.platform_reconciliation is not None
+    assert (
+        result.platform_reconciliation.status.value
+        == "local_only"
+    )
+
+
+def test_normalized_only_release_reconciliation(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "normalized-only.nes"
+    path.write_bytes(b"physical-bytes")
+
+    normalized = release()
+
+    result = identify_file(
+        path,
+        detector=FakeDetector("nes"),
+        resolver=FakeResolver(
+            physical=None,
+            normalized=normalized,
+        ),
+        normalizer=FakeNormalizer(
+            HashSet(
+                sha1=(
+                    "0123456789abcdef0123456789abcdef"
+                    "01234567"
+                ),
+            )
+        ),
+    )
+
+    assert result.release_reconciliation is not None
+    assert (
+        result.release_reconciliation.status.value
+        == "normalized_only"
+    )
+    assert result.canonical_match is normalized
+
+
+def bad_release(
+    *,
+    platform: str = "nes",
+    release_name: str = "Example Game (USA)",
+) -> CanonicalReleaseIdentity:
+    from rom_metadata_framework.provenance import CatalogueEvidence
+
+    return CanonicalReleaseIdentity(
+        release_name=release_name,
+        platform=platform,
+        source="bad-catalogue",
+        source_id="bad-record",
+        catalogue_evidence=(
+            CatalogueEvidence(
+                source="bad-catalogue",
+                match_method="SHA1",
+                authority="Example",
+                catalogue_name="Example Bad DAT",
+                file_status="Bad",
+                current_in_latest_catalogue=True,
+            ),
+        ),
+    )
+
+
+def test_known_bad_physical_vetoes_known_good_normalized_naming(
+    tmp_path: Path,
+) -> None:
+    from rom_metadata_framework.identification import verify_identification
+
+    path = tmp_path / "mixed-verification.nes"
+    path.write_bytes(b"physical-bytes")
+
+    result = identify_file(
+        path,
+        detector=FakeDetector("nes"),
+        resolver=FakeResolver(
+            physical=bad_release(),
+            normalized=verified_release(
+                authority="No-Intro",
+                status="Verified",
+            ),
+        ),
+        normalizer=FakeNormalizer(
+            HashSet(
+                sha1=(
+                    "0123456789abcdef0123456789abcdef"
+                    "01234567"
+                ),
+            )
+        ),
+    )
+
+    verification = verify_identification(result)
+
+    assert verification.physical is not None
+    assert verification.normalized is not None
+    assert (
+        verification.physical.status.value
+        == "known_bad"
+    )
+    assert verification.normalized_known_good
+    assert verification.content_known_good
+    assert verification.has_known_bad
+    assert not verification.safe_for_canonical_naming
+
+
+def test_known_bad_normalized_vetoes_known_good_physical_naming(
+    tmp_path: Path,
+) -> None:
+    from rom_metadata_framework.identification import verify_identification
+
+    path = tmp_path / "mixed-verification-reverse.nes"
+    path.write_bytes(b"physical-bytes")
+
+    result = identify_file(
+        path,
+        detector=FakeDetector("nes"),
+        resolver=FakeResolver(
+            physical=verified_release(
+                authority="No-Intro",
+                status="Verified",
+            ),
+            normalized=bad_release(),
+        ),
+        normalizer=FakeNormalizer(
+            HashSet(
+                sha1=(
+                    "0123456789abcdef0123456789abcdef"
+                    "01234567"
+                ),
+            )
+        ),
+    )
+
+    verification = verify_identification(result)
+
+    assert verification.physical_known_good
+    assert verification.normalized is not None
+    assert (
+        verification.normalized.status.value
+        == "known_bad"
+    )
+    assert verification.content_known_good
+    assert verification.has_known_bad
+    assert not verification.safe_for_canonical_naming
+
+
+def test_release_conflict_vetoes_known_good_naming(
+    tmp_path: Path,
+) -> None:
+    from rom_metadata_framework.identification import verify_identification
+
+    path = tmp_path / "release-conflict-verified.nes"
+    path.write_bytes(b"physical-bytes")
+
+    physical = verified_release(
+        authority="No-Intro",
+        status="Verified",
+    )
+
+    normalized = CanonicalReleaseIdentity(
+        release_name="Different Game (USA)",
+        platform="nes",
+        source="other",
+        source_id="other-record",
+        catalogue_evidence=physical.catalogue_evidence,
+    )
+
+    result = identify_file(
+        path,
+        detector=FakeDetector("nes"),
+        resolver=FakeResolver(
+            physical=physical,
+            normalized=normalized,
+        ),
+        normalizer=FakeNormalizer(
+            HashSet(
+                sha1=(
+                    "0123456789abcdef0123456789abcdef"
+                    "01234567"
+                ),
+            )
+        ),
+    )
+
+    verification = verify_identification(result)
+
+    assert verification.physical_known_good
+    assert verification.normalized_known_good
+    assert verification.content_known_good
+    assert verification.has_conflicts
+    assert not verification.safe_for_canonical_naming
+    assert result.canonical_match is None
+
+
+def test_agreeing_known_good_paths_remain_safe_for_naming(
+    tmp_path: Path,
+) -> None:
+    from rom_metadata_framework.identification import verify_identification
+
+    path = tmp_path / "agreement-verified.nes"
+    path.write_bytes(b"physical-bytes")
+
+    physical = verified_release(
+        authority="No-Intro",
+        status="Verified",
+    )
+    normalized = verified_release(
+        authority="No-Intro",
+        status="Verified",
+    )
+
+    result = identify_file(
+        path,
+        detector=FakeDetector("nes"),
+        resolver=FakeResolver(
+            physical=physical,
+            normalized=normalized,
+        ),
+        normalizer=FakeNormalizer(
+            HashSet(
+                sha1=(
+                    "0123456789abcdef0123456789abcdef"
+                    "01234567"
+                ),
+            )
+        ),
+    )
+
+    verification = verify_identification(result)
+
+    assert verification.content_known_good
+    assert not verification.has_known_bad
+    assert not verification.has_conflicts
+    assert verification.safe_for_canonical_naming
