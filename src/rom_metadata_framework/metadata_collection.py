@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .canonical import CanonicalReleaseIdentity
+from .identification import IdentificationResult
+from .local_metadata import LocalContentMetadata
 from .metadata_provider import (
     MetadataProvider,
     MetadataProviderResult,
@@ -18,62 +20,37 @@ class MetadataCollectionReport:
     results: tuple[MetadataProviderResult, ...]
 
     def __post_init__(self) -> None:
-        attempted = tuple(
-            name.strip().lower()
-            for name in self.attempted
-        )
-        unmatched = tuple(
-            name.strip().lower()
-            for name in self.unmatched
-        )
+        attempted = tuple(name.strip().lower() for name in self.attempted)
+        unmatched = tuple(name.strip().lower() for name in self.unmatched)
 
         if any(not name for name in attempted):
-            raise ValueError(
-                "attempted metadata provider names must not be empty"
-            )
+            raise ValueError("attempted metadata provider names must not be empty")
 
         if any(not name for name in unmatched):
-            raise ValueError(
-                "unmatched metadata provider names must not be empty"
-            )
+            raise ValueError("unmatched metadata provider names must not be empty")
 
         if len(set(attempted)) != len(attempted):
-            raise ValueError(
-                "attempted metadata provider names must be unique"
-            )
+            raise ValueError("attempted metadata provider names must be unique")
 
         if len(set(unmatched)) != len(unmatched):
-            raise ValueError(
-                "unmatched metadata provider names must be unique"
-            )
+            raise ValueError("unmatched metadata provider names must be unique")
 
         attempted_set = set(attempted)
         unmatched_set = set(unmatched)
 
         if not unmatched_set <= attempted_set:
-            raise ValueError(
-                "unmatched metadata providers must have been attempted"
-            )
+            raise ValueError("unmatched metadata providers must have been attempted")
 
-        result_names = tuple(
-            result.provider
-            for result in self.results
-        )
+        result_names = tuple(result.provider for result in self.results)
 
         if len(set(result_names)) != len(result_names):
-            raise ValueError(
-                "metadata collection results must have unique providers"
-            )
+            raise ValueError("metadata collection results must have unique providers")
 
         if not set(result_names) <= attempted_set:
-            raise ValueError(
-                "matched metadata providers must have been attempted"
-            )
+            raise ValueError("matched metadata providers must have been attempted")
 
         expected_matched = tuple(
-            name
-            for name in attempted
-            if name not in unmatched_set
+            name for name in attempted if name not in unmatched_set
         )
 
         if result_names != expected_matched:
@@ -89,11 +66,7 @@ class MetadataCollectionReport:
     def matched(self) -> tuple[str, ...]:
         """Provider names that returned matched records."""
 
-        return tuple(
-            result.provider
-            for result in self.results
-        )
-
+        return tuple(result.provider for result in self.results)
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,20 +76,13 @@ class MetadataProviderCollection:
     providers: tuple[MetadataProvider, ...]
 
     def __post_init__(self) -> None:
-        names = tuple(
-            provider.name.strip().lower()
-            for provider in self.providers
-        )
+        names = tuple(provider.name.strip().lower() for provider in self.providers)
 
         if any(not name for name in names):
-            raise ValueError(
-                "metadata provider names must not be empty"
-            )
+            raise ValueError("metadata provider names must not be empty")
 
         if len(set(names)) != len(names):
-            raise ValueError(
-                "metadata provider names must be unique"
-            )
+            raise ValueError("metadata provider names must be unique")
 
     def collect(
         self,
@@ -152,3 +118,67 @@ class MetadataProviderCollection:
             unmatched=tuple(unmatched),
             results=tuple(results),
         )
+
+
+@dataclass(frozen=True, slots=True)
+class MetadataEnrichmentResult:
+    """Identification evidence together with provider enrichment.
+
+    Local metadata remains structurally separate from provider-supplied
+    ReleaseMetadata. This object composes both evidence sources for
+    consumers without assigning precedence between them.
+    """
+
+    identification: IdentificationResult
+    provider_report: MetadataCollectionReport | None = None
+
+    @property
+    def canonical_identity(
+        self,
+    ) -> CanonicalReleaseIdentity | None:
+        """Canonical release selected by identification reconciliation."""
+
+        return self.identification.canonical_match
+
+    @property
+    def local_metadata(
+        self,
+    ) -> LocalContentMetadata | None:
+        """Metadata extracted directly from represented content."""
+
+        return self.identification.local_metadata
+
+    @property
+    def provider_results(
+        self,
+    ) -> tuple[MetadataProviderResult, ...]:
+        """Matched provider observations, preserving provider order."""
+
+        if self.provider_report is None:
+            return ()
+
+        return self.provider_report.results
+
+
+def collect_identification_metadata(
+    identification: IdentificationResult,
+    providers: MetadataProviderCollection,
+) -> MetadataEnrichmentResult:
+    """Enrich an identified release without merging evidence layers.
+
+    Provider metadata collection requires a canonical release identity.
+    Locally extracted metadata remains available even when no canonical
+    release was resolved and therefore no provider lookup can be made.
+    """
+
+    canonical = identification.canonical_match
+
+    if canonical is None:
+        return MetadataEnrichmentResult(
+            identification=identification,
+        )
+
+    return MetadataEnrichmentResult(
+        identification=identification,
+        provider_report=providers.collect(canonical),
+    )
