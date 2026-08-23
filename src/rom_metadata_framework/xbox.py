@@ -585,3 +585,59 @@ class XboxAdapter:
                 "xbe_version": str(certificate.version),
             },
         )
+
+
+class XboxPlatformDetector:
+    """Detect original Xbox from XDVDFS structural evidence."""
+
+    name = "xbox"
+
+    def __init__(
+        self,
+        *,
+        executable: str = XDVDFS_EXECUTABLE,
+    ) -> None:
+        self.adapter = XboxAdapter(
+            executable=executable,
+        )
+
+    def detect(self, path: Path):
+        """Return Xbox platform evidence when XDVDFS recognizes the image."""
+
+        from .detection import (
+            PlatformCandidate,
+            PlatformDetection,
+            PlatformEvidence,
+        )
+
+        path = Path(path)
+
+        probe = self.adapter.probe(path)
+
+        if not probe.supported:
+            return PlatformDetection()
+
+        representation = probe.details.get("representation")
+
+        details = {}
+
+        if representation is not None:
+            details["representation"] = representation
+
+        evidence = PlatformEvidence(
+            source="xdvdfs",
+            method="filesystem-probe",
+            value="xdvdfs",
+            strength=100,
+            details=details,
+        )
+
+        return PlatformDetection(
+            candidates=(
+                PlatformCandidate(
+                    platform="xbox",
+                    confidence=100,
+                    evidence=(evidence,),
+                ),
+            ),
+        )

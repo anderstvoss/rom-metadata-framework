@@ -401,3 +401,90 @@ def test_probe_timeout_is_backend_failure(
     assert probe.status is (NormalizerProbeStatus.BACKEND_FAILURE)
 
     assert probe.details["exception"] == ("BackendTimeoutError")
+
+
+def test_xbox_platform_detector_uses_structural_probe(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    from rom_metadata_framework.detection import (
+        PlatformDetector,
+    )
+    from rom_metadata_framework.normalization import (
+        NormalizerProbe,
+        NormalizerProbeStatus,
+    )
+    from rom_metadata_framework.xbox import (
+        XboxPlatformDetector,
+    )
+
+    path = tmp_path / "not-an-xbox-extension.bin"
+    path.write_bytes(b"candidate")
+
+    detector = XboxPlatformDetector(
+        executable="/example/xdvdfs",
+    )
+
+    monkeypatch.setattr(
+        detector.adapter,
+        "probe",
+        lambda candidate: NormalizerProbe(
+            normalizer="xbox",
+            status=NormalizerProbeStatus.SUPPORTED,
+            details={
+                "representation": "xiso",
+            },
+        ),
+    )
+
+    assert isinstance(
+        detector,
+        PlatformDetector,
+    )
+
+    detection = detector.detect(path)
+
+    assert detection.best is not None
+    assert detection.best.platform == "xbox"
+    assert detection.best.confidence == 100
+
+    evidence = detection.best.evidence[0]
+
+    assert evidence.source == "xdvdfs"
+    assert evidence.method == "filesystem-probe"
+    assert evidence.value == "xdvdfs"
+    assert evidence.details["representation"] == "xiso"
+
+
+def test_xbox_platform_detector_returns_unresolved_without_support(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    from rom_metadata_framework.normalization import (
+        NormalizerProbe,
+        NormalizerProbeStatus,
+    )
+    from rom_metadata_framework.xbox import (
+        XboxPlatformDetector,
+    )
+
+    path = tmp_path / "game.iso"
+    path.write_bytes(b"unrelated")
+
+    detector = XboxPlatformDetector(
+        executable="/example/xdvdfs",
+    )
+
+    monkeypatch.setattr(
+        detector.adapter,
+        "probe",
+        lambda candidate: NormalizerProbe(
+            normalizer="xbox",
+            status=NormalizerProbeStatus.UNSUPPORTED,
+        ),
+    )
+
+    detection = detector.detect(path)
+
+    assert detection.best is None
+    assert detection.candidates == ()

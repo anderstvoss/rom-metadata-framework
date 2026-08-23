@@ -33,9 +33,7 @@ def test_runtime_report_groups_capabilities_by_status() -> None:
     )
 
     assert tuple(item.name for item in report.ready) == ("ready",)
-    assert tuple(item.name for item in report.unavailable) == (
-        "unavailable",
-    )
+    assert tuple(item.name for item in report.unavailable) == ("unavailable",)
     assert tuple(item.name for item in report.errors) == ("error",)
     assert tuple(item.name for item in report.unknown) == ("unknown",)
 
@@ -117,18 +115,19 @@ def test_report_runtime_preserves_reporter_order() -> None:
 def test_default_runtime_report_exposes_independent_capabilities() -> None:
     report = build_default_runtime_report(
         dolphin_executable="/definitely/missing/dolphin-tool",
+        xbox_executable="/definitely/missing/xdvdfs",
     )
 
     assert tuple(item.name for item in report.capabilities) == (
         "nes-normalization",
         "dolphin-normalization",
+        "xbox-normalization",
     )
 
-    assert tuple(item.name for item in report.ready) == (
-        "nes-normalization",
-    )
+    assert tuple(item.name for item in report.ready) == ("nes-normalization",)
     assert tuple(item.name for item in report.unavailable) == (
         "dolphin-normalization",
+        "xbox-normalization",
     )
     assert not report.fully_ready
     assert not report.has_errors
