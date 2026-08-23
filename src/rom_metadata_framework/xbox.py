@@ -34,6 +34,10 @@ from .normalization import (
     NormalizerProbeStatus,
 )
 from .representation import RepresentationIdentity
+from .xdvdfs import (
+    BoundedXdvdfs,
+    XdvdfsFormatError,
+)
 
 XDVDFS_EXECUTABLE = "xdvdfs"
 
@@ -587,6 +591,43 @@ class XboxAdapter:
         )
 
 
+def _has_original_xbox_executable(
+    path: Path,
+) -> bool:
+    """Require root default.xbe with XBEH magic."""
+
+    try:
+        filesystem = BoundedXdvdfs(
+            Path(path)
+        )
+
+        entry = filesystem.find(
+            "/default.xbe"
+        )
+
+        if (
+            entry is None
+            or entry.directory
+            or entry.size < len(XBE_MAGIC)
+        ):
+            return False
+
+        magic = filesystem.read_file_range(
+            "/default.xbe",
+            offset=0,
+            size=len(XBE_MAGIC),
+            max_size=len(XBE_MAGIC),
+        )
+
+    except (
+        OSError,
+        XdvdfsFormatError,
+    ):
+        return False
+
+    return magic == XBE_MAGIC
+
+
 class XboxPlatformDetector:
     """Detect original Xbox from XDVDFS structural evidence."""
 
@@ -615,6 +656,9 @@ class XboxPlatformDetector:
         probe = self.adapter.probe(path)
 
         if not probe.supported:
+            return PlatformDetection()
+
+        if not _has_original_xbox_executable(path):
             return PlatformDetection()
 
         representation = probe.details.get("representation")

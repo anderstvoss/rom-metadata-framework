@@ -122,3 +122,20 @@ def test_rcheevos_console_ids_are_unique() -> None:
     ]
 
     assert len(identifiers) == len(set(identifiers))
+
+
+def test_xbox360_platform_aliases() -> None:
+    assert (
+        canonical_platform_name("xbox-360")
+        == "xbox-360"
+    )
+    assert (
+        canonical_platform_name("xbox360")
+        == "xbox-360"
+    )
+    assert (
+        canonical_platform_name(
+            "xbox-360-console"
+        )
+        == "xbox-360"
+    )

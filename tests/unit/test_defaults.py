@@ -222,23 +222,42 @@ def test_default_normalizer_rejects_invalid_config() -> None:
         build_default_normalizer(None)
 
 
-def test_default_detector_registers_nes_ps2_ps3_dolphin_xbox() -> None:
-    from rom_metadata_framework.defaults import build_default_detector
-    from rom_metadata_framework.dolphin import DolphinPlatformDetector
-    from rom_metadata_framework.nes import NesPlatformDetector
-    from rom_metadata_framework.ps2 import Ps2PlatformDetector
-    from rom_metadata_framework.ps3 import Ps3PlatformDetector
-    from rom_metadata_framework.xbox import XboxPlatformDetector
+def test_default_detector_registers_platform_detectors() -> None:
+    from rom_metadata_framework.defaults import (
+        build_default_detector,
+    )
+    from rom_metadata_framework.dolphin import (
+        DolphinPlatformDetector,
+    )
+    from rom_metadata_framework.nes import (
+        NesPlatformDetector,
+    )
+    from rom_metadata_framework.ps2 import (
+        Ps2PlatformDetector,
+    )
+    from rom_metadata_framework.ps3 import (
+        Ps3PlatformDetector,
+    )
+    from rom_metadata_framework.xbox import (
+        XboxPlatformDetector,
+    )
+    from rom_metadata_framework.xbox360 import (
+        Xbox360PlatformDetector,
+    )
 
     detector = build_default_detector()
 
-    assert len(detector.detectors) == 5
-    nes, ps2, ps3, dolphin, xbox = detector.detectors
-    assert isinstance(nes, NesPlatformDetector)
-    assert isinstance(ps2, Ps2PlatformDetector)
-    assert isinstance(ps3, Ps3PlatformDetector)
-    assert isinstance(dolphin, DolphinPlatformDetector)
-    assert isinstance(xbox, XboxPlatformDetector)
+    assert tuple(
+        type(item)
+        for item in detector.detectors
+    ) == (
+        NesPlatformDetector,
+        Ps2PlatformDetector,
+        Ps3PlatformDetector,
+        DolphinPlatformDetector,
+        Xbox360PlatformDetector,
+        XboxPlatformDetector,
+    )
 
 
 def test_default_detector_passes_backend_configuration() -> None:
@@ -246,8 +265,15 @@ def test_default_detector_passes_backend_configuration() -> None:
         DefaultRuntimeConfig,
         build_default_detector,
     )
-    from rom_metadata_framework.dolphin import DolphinPlatformDetector
-    from rom_metadata_framework.xbox import XboxPlatformDetector
+    from rom_metadata_framework.dolphin import (
+        DolphinPlatformDetector,
+    )
+    from rom_metadata_framework.xbox import (
+        XboxPlatformDetector,
+    )
+    from rom_metadata_framework.xbox360 import (
+        Xbox360PlatformDetector,
+    )
 
     detector = build_default_detector(
         DefaultRuntimeConfig(
@@ -257,45 +283,68 @@ def test_default_detector_passes_backend_configuration() -> None:
     )
 
     dolphin = detector.detectors[3]
-    xbox = detector.detectors[4]
+    xbox360 = detector.detectors[4]
+    xbox = detector.detectors[5]
 
-    assert isinstance(dolphin, DolphinPlatformDetector)
-    assert isinstance(xbox, XboxPlatformDetector)
-    assert dolphin.adapter.backend.executable == "/example/dolphin-tool"
-    assert xbox.adapter.backend.executable == "/example/xdvdfs"
+    assert isinstance(
+        dolphin,
+        DolphinPlatformDetector,
+    )
+    assert isinstance(
+        xbox360,
+        Xbox360PlatformDetector,
+    )
+    assert isinstance(
+        xbox,
+        XboxPlatformDetector,
+    )
+
+    assert (
+        dolphin.adapter.backend.executable
+        == "/example/dolphin-tool"
+    )
+    assert (
+        xbox.adapter.backend.executable
+        == "/example/xdvdfs"
+    )
 
 
 def test_default_detector_rejects_invalid_config() -> None:
-    from rom_metadata_framework.defaults import build_default_detector
+    from rom_metadata_framework.defaults import (
+        build_default_detector,
+    )
 
-    with pytest.raises(TypeError, match="DefaultRuntimeConfig"):
+    with pytest.raises(
+        TypeError,
+        match="DefaultRuntimeConfig",
+    ):
         build_default_detector(None)
 
 
-def test_default_inspector_registers_ps2() -> None:
+def test_default_inspector_registers_structural_inspectors() -> None:
     from rom_metadata_framework.defaults import (
         build_default_inspector,
     )
     from rom_metadata_framework.ps2 import (
         Ps2StructuralInspector,
     )
-
-    inspector = build_default_inspector()
-
     from rom_metadata_framework.ps3 import (
         Ps3StructuralInspector,
     )
+    from rom_metadata_framework.xbox360 import (
+        Xbox360StructuralInspector,
+    )
 
-    assert len(inspector.inspectors) == 2
-    assert isinstance(
-        inspector.inspectors[0],
+    inspector = build_default_inspector()
+
+    assert tuple(
+        type(item)
+        for item in inspector.inspectors
+    ) == (
         Ps2StructuralInspector,
-    )
-    assert isinstance(
-        inspector.inspectors[1],
         Ps3StructuralInspector,
+        Xbox360StructuralInspector,
     )
-
 
 def test_default_inspector_rejects_invalid_config() -> None:
     from rom_metadata_framework.defaults import (

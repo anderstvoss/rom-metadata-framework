@@ -380,3 +380,44 @@ not currently decoded or normalized by the framework.
 
 There is currently no PS3 normalizer and no PS3 normalization runtime
 capability.
+
+## Xbox 360 readable-disc support
+
+The default runtime includes bounded Xbox 360 disc detection and
+non-normalizing structural inspection for directly readable XDVDFS game
+partitions.
+
+Xbox 360 detection is generation-specific rather than filesystem-only.
+XDVDFS is shared by original Xbox and Xbox 360 software, so the
+filesystem alone is not sufficient evidence for either platform.
+
+Xbox 360 detection requires:
+
+- a valid XDVDFS volume descriptor at a bounded known game-partition
+  offset;
+- a valid bounded root directory;
+- root `default.xex`;
+- `XEX2` executable magic;
+- a valid XEX2 Execution ID optional header;
+- internally consistent disc-number and disc-count values.
+
+The structural inspector preserves artifact-local evidence including:
+
+- XDVDFS partition and representation information;
+- Xbox 360 title ID;
+- media ID;
+- executable version and base version;
+- disc number and disc count;
+- XEX platform and executable-type fields;
+- root `default.xex` structural location and size.
+
+The original-Xbox detector separately requires root `default.xbe` with
+valid `XBEH` magic. A valid XDVDFS filesystem therefore no longer
+implicitly identifies an image as original Xbox.
+
+Xbox 360 structural evidence does not create normalized content identity
+and does not cause normalized provider lookup.
+
+There is currently no Xbox 360 normalizer and no Xbox 360 normalization
+runtime capability. No RetroAchievements/rcheevos Xbox 360 backend
+mapping is currently registered.

@@ -426,6 +426,11 @@ def test_xbox_platform_detector_uses_structural_probe(
     )
 
     monkeypatch.setattr(
+        "rom_metadata_framework.xbox._has_original_xbox_executable",
+        lambda candidate: True,
+    )
+
+    monkeypatch.setattr(
         detector.adapter,
         "probe",
         lambda candidate: NormalizerProbe(
@@ -564,3 +569,87 @@ def test_xbe_non_ascii_title_prefix_uses_hex() -> None:
     )
 
     assert certificate.formatted_title_id == "0102-003"
+
+
+def test_original_xbox_detector_rejects_xdvdfs_without_xbe(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    from rom_metadata_framework.normalization import (
+        NormalizerProbe,
+        NormalizerProbeStatus,
+    )
+    from rom_metadata_framework.xbox import (
+        XboxPlatformDetector,
+    )
+
+    path = tmp_path / "xbox360.iso"
+    path.write_bytes(b"candidate")
+
+    detector = XboxPlatformDetector(
+        executable="/example/xdvdfs",
+    )
+
+    monkeypatch.setattr(
+        detector.adapter,
+        "probe",
+        lambda candidate: NormalizerProbe(
+            normalizer="xbox",
+            status=NormalizerProbeStatus.SUPPORTED,
+            details={
+                "representation": "full-disc",
+            },
+        ),
+    )
+
+    monkeypatch.setattr(
+        "rom_metadata_framework.xbox._has_original_xbox_executable",
+        lambda candidate: False,
+    )
+
+    detection = detector.detect(path)
+
+    assert detection.best is None
+    assert detection.candidates == ()
+
+
+def test_original_xbox_detector_requires_xbe_after_backend_probe(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    from rom_metadata_framework.normalization import (
+        NormalizerProbe,
+        NormalizerProbeStatus,
+    )
+    from rom_metadata_framework.xbox import (
+        XboxPlatformDetector,
+    )
+
+    path = tmp_path / "xbox.iso"
+    path.write_bytes(b"candidate")
+
+    detector = XboxPlatformDetector(
+        executable="/example/xdvdfs",
+    )
+
+    monkeypatch.setattr(
+        detector.adapter,
+        "probe",
+        lambda candidate: NormalizerProbe(
+            normalizer="xbox",
+            status=NormalizerProbeStatus.SUPPORTED,
+            details={
+                "representation": "xiso",
+            },
+        ),
+    )
+
+    monkeypatch.setattr(
+        "rom_metadata_framework.xbox._has_original_xbox_executable",
+        lambda candidate: True,
+    )
+
+    detection = detector.detect(path)
+
+    assert detection.best is not None
+    assert detection.best.platform == "xbox"

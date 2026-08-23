@@ -25,6 +25,10 @@ from .xbox import (
     XboxAdapter,
     XboxPlatformDetector,
 )
+from .xbox360 import (
+    Xbox360PlatformDetector,
+    Xbox360StructuralInspector,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,6 +104,7 @@ def build_default_detector(
             DolphinPlatformDetector(
                 executable=config.dolphin_executable,
             ),
+            Xbox360PlatformDetector(),
             XboxPlatformDetector(
                 executable=config.xbox_executable,
             ),
@@ -121,6 +126,7 @@ def build_default_inspector(
         (
             Ps2StructuralInspector(),
             Ps3StructuralInspector(),
+            Xbox360StructuralInspector(),
         )
     )
 

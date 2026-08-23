@@ -53,10 +53,11 @@ release lookup, and optional content normalization:
 
 
 The default detector currently recognizes NES, PlayStation 2,
-PlayStation 3, GameCube/Wii, and original Xbox sources. The default
-structural inspector provides non-normalizing local metadata for
-PlayStation 2 and directly readable PlayStation 3 ISO9660 disc images.
-PS3 does not currently have a normalization path.
+PlayStation 3, Xbox 360, GameCube/Wii, and original Xbox sources. The
+default structural inspector provides non-normalizing local metadata for
+PlayStation 2, directly readable PlayStation 3 ISO9660 disc images, and
+Xbox 360 XDVDFS/XEX2 disc images. PS3 and Xbox 360 do not currently have
+normalization paths.
 
 ```python
 from pathlib import Path
