@@ -1,10 +1,12 @@
 from rom_metadata_framework.local_metadata import (
     LocalContentMetadata,
+    LocalIdentifier,
     LocalMetadataProvenance,
     LocalMetadataValue,
     LocalPlayerCount,
 )
 from rom_metadata_framework.metadata import (
+    ExternalIdentifier,
     MediaReference,
     MetadataProvenance,
     MetadataValue,
@@ -289,3 +291,150 @@ def test_structurally_different_media_fields_are_not_compared() -> None:
         raise AssertionError(
             "structurally different media fields must not be reconciled"
         )
+
+
+def test_identifiers_compare_namespace_and_opaque_value() -> None:
+    local = LocalContentMetadata(
+        identifiers=(
+            LocalIdentifier(
+                namespace=" Xbox-Title-ID ",
+                value="4D530004",
+                provenance=local_provenance(),
+            ),
+        ),
+    )
+
+    provider = provider_result(
+        ReleaseMetadata(
+            external_ids=(
+                ExternalIdentifier(
+                    namespace="xbox-title-id",
+                    value="4D530004",
+                    provenance=provider_provenance(),
+                ),
+            ),
+        )
+    )
+
+    result = reconcile_metadata(
+        local,
+        (provider,),
+    ).get("identifiers")
+
+    assert result.status is MetadataFieldReconciliationStatus.AGREEMENT
+    assert result.local_values == ('["xbox-title-id","4D530004"]',)
+    assert result.provider_values == ('["xbox-title-id","4D530004"]',)
+    assert result.agreement_values == ('["xbox-title-id","4D530004"]',)
+
+
+def test_identifier_namespace_is_part_of_semantic_identity() -> None:
+    local = LocalContentMetadata(
+        identifiers=(
+            LocalIdentifier(
+                namespace="xbox-title-id",
+                value="4D530004",
+                provenance=local_provenance(),
+            ),
+        ),
+    )
+
+    provider = provider_result(
+        ReleaseMetadata(
+            external_ids=(
+                ExternalIdentifier(
+                    namespace="provider-record-id",
+                    value="4D530004",
+                    provenance=provider_provenance(),
+                ),
+            ),
+        )
+    )
+
+    result = reconcile_metadata(
+        local,
+        (provider,),
+    ).get("identifiers")
+
+    assert result.status is MetadataFieldReconciliationStatus.DIVERGENT
+    assert result.agreement_values == ()
+
+
+def test_identifier_values_remain_case_sensitive() -> None:
+    local = LocalContentMetadata(
+        identifiers=(
+            LocalIdentifier(
+                namespace="opaque-id",
+                value="ABC123",
+                provenance=local_provenance(),
+            ),
+        ),
+    )
+
+    provider = provider_result(
+        ReleaseMetadata(
+            external_ids=(
+                ExternalIdentifier(
+                    namespace="opaque-id",
+                    value="abc123",
+                    provenance=provider_provenance(),
+                ),
+            ),
+        )
+    )
+
+    result = reconcile_metadata(
+        local,
+        (provider,),
+    ).get("identifiers")
+
+    assert result.status is MetadataFieldReconciliationStatus.DIVERGENT
+    assert result.agreement_values == ()
+
+
+def test_semantically_unmapped_fields_remain_outside_reconciliation() -> None:
+    for field_name in (
+        "timestamps",
+        "release_dates",
+        "ratings",
+        "age_ratings",
+        "media",
+    ):
+        assert field_name not in COMPARABLE_METADATA_FIELDS
+
+
+def test_identifier_pair_encoding_cannot_collapse_delimiter_values() -> None:
+    local = LocalContentMetadata(
+        identifiers=(
+            LocalIdentifier(
+                namespace="a:b",
+                value="c",
+                provenance=local_provenance(),
+            ),
+        ),
+    )
+
+    provider = provider_result(
+        ReleaseMetadata(
+            external_ids=(
+                ExternalIdentifier(
+                    namespace="a",
+                    value="b:c",
+                    provenance=provider_provenance(),
+                ),
+            ),
+        )
+    )
+
+    result = reconcile_metadata(
+        local,
+        (provider,),
+    ).get("identifiers")
+
+    assert result.status is MetadataFieldReconciliationStatus.DIVERGENT
+    assert result.local_values == (
+        '["a:b","c"]',
+    )
+    assert result.provider_values == (
+        '["a","b:c"]',
+    )
+    assert result.agreement_values == ()
