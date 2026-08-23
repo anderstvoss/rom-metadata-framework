@@ -1,0 +1,37 @@
+#!/bin/sh
+set -eu
+
+if [ "$#" -ne 2 ]; then
+    echo "usage: build-local <rcheevos-source> <output-directory>" >&2
+    exit 2
+fi
+
+rcheevos_source=$1
+output_directory=$2
+
+if [ ! -f "$rcheevos_source/include/rc_hash.h" ]; then
+    echo "ERROR: rcheevos source tree is missing rc_hash.h" >&2
+    exit 1
+fi
+
+if [ ! -f "$rcheevos_source/src/rc_version.c" ]; then
+    echo "ERROR: rcheevos source tree is missing rc_version.c" >&2
+    exit 1
+fi
+
+mkdir -p "$output_directory"
+
+cc \
+    -std=gnu11 \
+    -Wall \
+    -Wextra \
+    -Werror \
+    -O2 \
+    -I"$rcheevos_source/include" \
+    -I"$rcheevos_source/src" \
+    -I"$rcheevos_source/src/rhash" \
+    main.c \
+    "$rcheevos_source"/src/rhash/*.c \
+    "$rcheevos_source/src/rc_compat.c" \
+    "$rcheevos_source/src/rc_version.c" \
+    -o "$output_directory/rom-metadata-rcheevos"

@@ -1,0 +1,22 @@
+upstream:
+  project: "rcheevos"
+  repository: "https://github.com/RetroAchievements/rcheevos"
+  revision: "2ad0b8672f68a48148620164510b963039e49eb1"
+  license: "MIT"
+  supported_versions: "12.4.0"
+
+integration:
+  method: "linked-library"
+  dependency: "rcheevos"
+  redistributed: false
+  required: false
+  description: >-
+    Original project helper linked against a pinned rcheevos release and
+    invoked by the Python framework through the external backend runtime.
+
+derived_files: []
+
+modifications: []
+
+review:
+  last_reviewed: "2026-08-22"
