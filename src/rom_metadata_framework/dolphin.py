@@ -7,10 +7,19 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import MappingProxyType
 
-from .backends import BackendError, BackendSpec, run_backend
+from .backends import (
+    BackendError,
+    BackendSpec,
+    BackendUnavailableError,
+    run_backend,
+)
 from .content import NormalizedContentIdentity
 from .hashing import hash_file
 from .identity import HashSet
+from .normalization import (
+    NormalizerProbe,
+    NormalizerProbeStatus,
+)
 from .representation import RepresentationIdentity
 
 DOLPHIN_EXECUTABLE = "dolphin-tool"
@@ -141,28 +150,88 @@ class DolphinAdapter:
             else None
         )
 
-    def supports(self, path: Path) -> bool:
-        """Return whether Dolphin recognizes the represented disc."""
+    def probe(self, path: Path) -> NormalizerProbe:
+        """Classify Dolphin support without hiding backend failures."""
 
         path = Path(path)
 
         if not path.is_file():
-            return False
+            return NormalizerProbe(
+                normalizer=self.name,
+                status=NormalizerProbeStatus.UNSUPPORTED,
+                reason="source is not a regular file",
+            )
 
         try:
             header = self._header(path)
-            self._required_string(
+        except BackendUnavailableError as exc:
+            return NormalizerProbe(
+                normalizer=self.name,
+                status=(
+                    NormalizerProbeStatus.BACKEND_UNAVAILABLE
+                ),
+                reason=str(exc),
+            )
+        except BackendError as exc:
+            return NormalizerProbe(
+                normalizer=self.name,
+                status=NormalizerProbeStatus.BACKEND_FAILURE,
+                reason=str(exc),
+                details={
+                    "exception": type(exc).__name__,
+                },
+            )
+        except DolphinResponseError as exc:
+            return NormalizerProbe(
+                normalizer=self.name,
+                status=NormalizerProbeStatus.BACKEND_FAILURE,
+                reason=str(exc),
+                details={
+                    "exception": type(exc).__name__,
+                },
+            )
+
+        # Dolphin 2606a returns an empty JSON object for an input
+        # that is not a recognized GameCube/Wii disc.
+        if not header:
+            return NormalizerProbe(
+                normalizer=self.name,
+                status=NormalizerProbeStatus.UNSUPPORTED,
+                reason="Dolphin did not recognize a disc header",
+            )
+
+        try:
+            game_id = self._required_string(
                 header,
                 "game_id",
             )
-            self._required_revision(header)
-        except (
-            BackendError,
-            DolphinResponseError,
-        ):
-            return False
+            revision = self._required_revision(
+                header
+            )
+        except DolphinResponseError as exc:
+            return NormalizerProbe(
+                normalizer=self.name,
+                status=NormalizerProbeStatus.BACKEND_FAILURE,
+                reason=str(exc),
+                details={
+                    "exception": type(exc).__name__,
+                    "response": "incomplete-header",
+                },
+            )
 
-        return True
+        return NormalizerProbe(
+            normalizer=self.name,
+            status=NormalizerProbeStatus.SUPPORTED,
+            details={
+                "game_id": game_id,
+                "revision": str(revision),
+            },
+        )
+
+    def supports(self, path: Path) -> bool:
+        """Return whether Dolphin can safely normalize the source."""
+
+        return self.probe(path).supported
 
     def identify(self, path: Path) -> DolphinDiscIdentity:
         """Inspect and normalize a GameCube or Wii disc image."""

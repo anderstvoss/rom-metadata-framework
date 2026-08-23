@@ -9,6 +9,10 @@ from types import MappingProxyType
 
 from .content import NormalizedContentIdentity
 from .identity import HashSet
+from .normalization import (
+    NormalizerProbe,
+    NormalizerProbeStatus,
+)
 from .representation import RepresentationIdentity
 
 NES_MAGIC = b"NES\x1a"
@@ -90,33 +94,74 @@ class NesAdapter:
     ) -> None:
         self.allow_headerless = allow_headerless
 
-    def supports(self, path: Path) -> bool:
-        """Return whether this adapter can safely normalize the file."""
+    def probe(self, path: Path) -> NormalizerProbe:
+        """Classify whether this adapter can normalize one source."""
 
         path = Path(path)
 
         if not path.is_file():
-            return False
+            return NormalizerProbe(
+                normalizer=self.name,
+                status=NormalizerProbeStatus.UNSUPPORTED,
+                reason="source is not a regular file",
+            )
 
         with path.open("rb") as handle:
             header = handle.read(NES_HEADER_SIZE)
 
         if header[:4] != NES_MAGIC:
-            return (
+            if (
                 self.allow_headerless
                 and path.suffix.lower() == ".nes"
+            ):
+                return NormalizerProbe(
+                    normalizer=self.name,
+                    status=NormalizerProbeStatus.SUPPORTED,
+                    reason="headerless NES explicitly enabled",
+                    details={
+                        "representation": "headerless",
+                    },
+                )
+
+            return NormalizerProbe(
+                normalizer=self.name,
+                status=NormalizerProbeStatus.UNSUPPORTED,
+                reason="NES header signature not present",
             )
 
         if len(header) != NES_HEADER_SIZE:
-            return False
+            return NormalizerProbe(
+                normalizer=self.name,
+                status=NormalizerProbeStatus.UNSAFE,
+                reason="truncated NES header",
+                details={
+                    "representation": "headered",
+                },
+            )
 
         flags6 = header[6]
         flags7 = header[7]
 
-        if flags6 & 0x04:
-            return False
-
         is_nes2 = (flags7 & 0x0C) == 0x08
+        representation = (
+            "nes2"
+            if is_nes2
+            else "ines"
+        )
+
+        if flags6 & 0x04:
+            return NormalizerProbe(
+                normalizer=self.name,
+                status=NormalizerProbeStatus.UNSAFE,
+                reason=(
+                    "trainer-bearing NES images are not "
+                    "normalized safely"
+                ),
+                details={
+                    "representation": representation,
+                    "trainer": "true",
+                },
+            )
 
         if is_nes2:
             prg_size = _nes2_rom_size(
@@ -138,8 +183,43 @@ class NesAdapter:
             + prg_size
             + chr_size
         )
+        actual_size = path.stat().st_size
 
-        return path.stat().st_size == expected_size
+        details = {
+            "representation": representation,
+            "expected_size": str(expected_size),
+            "actual_size": str(actual_size),
+        }
+
+        if actual_size < expected_size:
+            return NormalizerProbe(
+                normalizer=self.name,
+                status=NormalizerProbeStatus.UNSAFE,
+                reason="NES image is truncated",
+                details=details,
+            )
+
+        if actual_size > expected_size:
+            return NormalizerProbe(
+                normalizer=self.name,
+                status=NormalizerProbeStatus.UNSAFE,
+                reason=(
+                    "NES image contains trailing or "
+                    "miscellaneous data"
+                ),
+                details=details,
+            )
+
+        return NormalizerProbe(
+            normalizer=self.name,
+            status=NormalizerProbeStatus.SUPPORTED,
+            details=details,
+        )
+
+    def supports(self, path: Path) -> bool:
+        """Return whether this adapter can safely normalize the file."""
+
+        return self.probe(path).supported
 
     def identify(self, path: Path) -> NesContentIdentity:
         """Return normalized PRG+CHR identity for one NES image."""

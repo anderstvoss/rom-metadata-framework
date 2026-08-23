@@ -477,3 +477,136 @@ def test_supports_accepts_exact_nes2_exponent_size_image(
 
     assert result.representation == "nes2"
     assert result.content.kind == "cartridge"
+
+
+def test_probe_distinguishes_unrelated_from_unsafe_nes(
+    tmp_path: Path,
+) -> None:
+    from rom_metadata_framework.normalization import (
+        NormalizerProbeStatus,
+    )
+
+    unrelated = tmp_path / "unrelated.bin"
+    unrelated.write_bytes(b"not-an-nes-image")
+
+    header = make_header(
+        nes2=False,
+    )
+
+    truncated = tmp_path / "truncated-probe.nes"
+    truncated.write_bytes(
+        header
+        + (b"P" * ((16 * 1024) - 1))
+        + (b"C" * (8 * 1024))
+    )
+
+    appended = tmp_path / "appended-probe.nes"
+    appended.write_bytes(
+        header
+        + (b"P" * (16 * 1024))
+        + (b"C" * (8 * 1024))
+        + b"extra"
+    )
+
+    adapter = NesAdapter()
+
+    assert (
+        adapter.probe(unrelated).status
+        is NormalizerProbeStatus.UNSUPPORTED
+    )
+    assert (
+        adapter.probe(truncated).status
+        is NormalizerProbeStatus.UNSAFE
+    )
+    assert (
+        adapter.probe(appended).status
+        is NormalizerProbeStatus.UNSAFE
+    )
+
+
+def test_probe_reports_supported_valid_nes(
+    tmp_path: Path,
+) -> None:
+    from rom_metadata_framework.normalization import (
+        NormalizerProbeStatus,
+    )
+
+    path = tmp_path / "valid-probe.nes"
+    path.write_bytes(
+        make_header(
+            nes2=False,
+        )
+        + (b"P" * (16 * 1024))
+        + (b"C" * (8 * 1024))
+    )
+
+    probe = NesAdapter().probe(path)
+
+    assert (
+        probe.status
+        is NormalizerProbeStatus.SUPPORTED
+    )
+    assert probe.details["representation"] == "ines"
+    assert probe.details["actual_size"] == (
+        probe.details["expected_size"]
+    )
+
+
+def test_probe_reports_trainer_nes_as_unsafe(
+    tmp_path: Path,
+) -> None:
+    from rom_metadata_framework.normalization import (
+        NormalizerProbeStatus,
+    )
+
+    header = bytearray(
+        make_header(
+            nes2=False,
+        )
+    )
+    header[6] |= 0x04
+
+    path = tmp_path / "trainer-probe.nes"
+    path.write_bytes(
+        bytes(header)
+        + (b"T" * NES_TRAINER_SIZE)
+        + (b"P" * (16 * 1024))
+        + (b"C" * (8 * 1024))
+    )
+
+    probe = NesAdapter().probe(path)
+
+    assert (
+        probe.status
+        is NormalizerProbeStatus.UNSAFE
+    )
+    assert probe.details["trainer"] == "true"
+
+
+def test_probe_preserves_headerless_opt_in(
+    tmp_path: Path,
+) -> None:
+    from rom_metadata_framework.normalization import (
+        NormalizerProbeStatus,
+    )
+
+    path = tmp_path / "headerless.nes"
+    path.write_bytes(b"headerless-content")
+
+    default_probe = NesAdapter().probe(path)
+    opt_in_probe = NesAdapter(
+        allow_headerless=True,
+    ).probe(path)
+
+    assert (
+        default_probe.status
+        is NormalizerProbeStatus.UNSUPPORTED
+    )
+    assert (
+        opt_in_probe.status
+        is NormalizerProbeStatus.SUPPORTED
+    )
+    assert (
+        opt_in_probe.details["representation"]
+        == "headerless"
+    )
