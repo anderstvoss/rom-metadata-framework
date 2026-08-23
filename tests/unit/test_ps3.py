@@ -64,7 +64,7 @@ def _directory(entries: tuple[bytes, ...]) -> bytes:
 
 
 def _make_sfb(
-    title_id: str = "BLUS31011",
+    title_id: str = "BLUS12345",
 ) -> bytes:
     data = bytearray(0x600)
     data[:8] = b".SFB\x00\x01\x00\x00"
@@ -102,7 +102,7 @@ def _make_sfb(
 
 def _make_sfo(
     *,
-    title_id: str = "BLUS31011",
+    title_id: str = "BLUS12345",
     category: str = "DG",
 ) -> bytes:
     values: tuple[
@@ -183,8 +183,8 @@ def _make_sfo(
 def _write_ps3_iso(
     path: Path,
     *,
-    sfo_title_id: str = "BLUS31011",
-    sfb_title_id: str = "BLUS31011",
+    sfo_title_id: str = "BLUS12345",
+    sfb_title_id: str = "BLUS12345",
     category: str = "DG",
     include_sfb: bool = True,
 ) -> None:
@@ -348,8 +348,8 @@ def test_inspect_ps3_iso_extracts_disc_metadata(
     metadata = inspect_ps3_iso(path)
 
     assert metadata.volume_identifier == "PS3VOLUME"
-    assert metadata.title_id == "BLUS31011"
-    assert metadata.sfb_title_id == "BLUS31011"
+    assert metadata.title_id == "BLUS12345"
+    assert metadata.sfb_title_id == "BLUS12345"
     assert metadata.category == "DG"
     assert metadata.title == "Synthetic PS3 Game"
     assert metadata.app_version == "01.00"
@@ -375,7 +375,7 @@ def test_ps3_detector_uses_sfb_and_sfo_evidence(
 
     assert evidence.source == "ps3-disc-structure"
     assert evidence.method == "sfb-param-sfo"
-    assert evidence.value == "BLUS31011"
+    assert evidence.value == "BLUS12345"
     assert evidence.details["category"] == "DG"
 
 
@@ -397,7 +397,7 @@ def test_ps3_inspector_returns_representation_and_local_metadata(
     assert local is not None
     assert local.platform == "playstation-3"
     assert local.identifiers[0].namespace == "ps3-title-id"
-    assert local.identifiers[0].value == "BLUS31011"
+    assert local.identifiers[0].value == "BLUS12345"
     assert local.titles[0].value == "Synthetic PS3 Game"
     assert local.software_versions[0].value == "01.00"
 
@@ -423,7 +423,7 @@ def test_ps3_rejects_mismatched_title_ids(
 
     _write_ps3_iso(
         path,
-        sfo_title_id="BLUS31011",
+        sfo_title_id="BLUS12345",
         sfb_title_id="BLUS99999",
     )
 

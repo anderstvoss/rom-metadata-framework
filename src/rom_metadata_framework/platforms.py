@@ -123,6 +123,13 @@ PLATFORMS: tuple[PlatformDefinition, ...] = (
         ),
     ),
     PlatformDefinition(
+        name="xbox-360",
+        aliases=(
+            "xbox360",
+            "xbox-360-console",
+        ),
+    ),
+    PlatformDefinition(
         name="psp",
         aliases=(
             "playstation-portable",

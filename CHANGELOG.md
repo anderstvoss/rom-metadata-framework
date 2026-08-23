@@ -8,6 +8,18 @@ yet. Versioning and release expectations are documented in
 
 ## [Unreleased]
 
+- Add bounded Xbox 360 XDVDFS/XEX2 disc detection and structural
+  inspection, including title ID, media ID, executable version, and
+  disc metadata without introducing an Xbox 360 normalization path.
+- Add a shared bounded dependency-free XDVDFS reader with fixed-offset
+  volume detection, directory-tree traversal, and bounded file-range
+  reads.
+- Harden original-Xbox detection to require root `default.xbe` with
+  `XBEH` magic instead of treating XDVDFS recognition alone as
+  sufficient platform evidence.
+- Replace a corpus-derived synthetic PS3 title ID in tests with a
+  neutral fixture value.
+
 - Add bounded PlayStation 3 readable-ISO detection and structural metadata
   inspection using `PS3_DISC.SFB` and `PS3_GAME/PARAM.SFO`, including
   cross-checked title IDs, local title/version metadata, and no PS3
