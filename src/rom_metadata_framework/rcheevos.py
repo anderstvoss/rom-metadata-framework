@@ -132,3 +132,21 @@ class RcheevosAdapter:
                 backend="rom-metadata-rcheevos",
             ),
         )
+
+
+def adapter_for_platform(
+    platform: str,
+    *,
+    executable: str = RCHEEVOS_HELPER_EXECUTABLE,
+) -> RcheevosAdapter:
+    """Create a rcheevos adapter from a framework platform name or alias."""
+
+    from .platforms import canonical_platform_name, rcheevos_console_id
+
+    canonical = canonical_platform_name(platform)
+
+    return RcheevosAdapter(
+        console_id=rcheevos_console_id(canonical),
+        platform=canonical,
+        executable=executable,
+    )
