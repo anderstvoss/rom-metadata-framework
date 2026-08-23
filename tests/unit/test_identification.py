@@ -450,3 +450,106 @@ def test_redump_normalized_content_can_be_known_good(
     assert report.normalized_known_good
     assert report.content_known_good
     assert not report.representation_known_good
+
+
+def test_identification_skips_normalized_lookup_when_router_has_no_match(
+    tmp_path: Path,
+) -> None:
+    from rom_metadata_framework.routing import (
+        CompositeNormalizer,
+    )
+
+    class UnsupportedNormalizer:
+        name = "unsupported"
+
+        def supports(self, path: Path) -> bool:
+            return False
+
+        def identify(self, path: Path):
+            raise AssertionError(
+                "unsupported normalizer must not identify"
+            )
+
+    path = tmp_path / "unknown.bin"
+    path.write_bytes(b"unknown-content")
+
+    detector = FakeDetector(None)
+    resolver = FakeResolver(
+        physical=None,
+        normalized=None,
+    )
+
+    result = identify_file(
+        path,
+        detector=detector,
+        resolver=resolver,
+        normalizer=CompositeNormalizer(
+            (UnsupportedNormalizer(),)
+        ),
+    )
+
+    assert result.normalized_content is None
+    assert result.normalized_match is None
+
+
+def test_identification_propagates_ambiguous_normalizer(
+    tmp_path: Path,
+) -> None:
+    import pytest
+
+    from rom_metadata_framework.routing import (
+        AmbiguousNormalizerError,
+        CompositeNormalizer,
+    )
+
+    class ClaimingNormalizer:
+        def __init__(self, name: str) -> None:
+            self.name = name
+            self.identify_calls = 0
+
+        def supports(self, path: Path) -> bool:
+            return True
+
+        def identify(self, path: Path):
+            self.identify_calls += 1
+            raise AssertionError(
+                "ambiguous normalizer must not identify"
+            )
+
+    path = tmp_path / "ambiguous.bin"
+    path.write_bytes(b"ambiguous-content")
+
+    first = ClaimingNormalizer("first")
+    second = ClaimingNormalizer("second")
+
+    resolver = FakeResolver(
+        physical=None,
+        normalized=None,
+    )
+
+    with pytest.raises(
+        AmbiguousNormalizerError,
+    ) as exc_info:
+        identify_file(
+            path,
+            detector=FakeDetector(None),
+            resolver=resolver,
+            normalizer=CompositeNormalizer(
+                (first, second)
+            ),
+        )
+
+    assert exc_info.value.adapter_names == (
+        "first",
+        "second",
+    )
+
+    # Physical provider lookup still occurs first.
+    assert resolver.identify_calls == 1
+
+    # Ambiguous routing must not invoke either normalizer.
+    assert first.identify_calls == 0
+    assert second.identify_calls == 0
+
+    # No normalized provider lookup can occur.
+    assert resolver.lookup_calls == 0
