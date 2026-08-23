@@ -1,18 +1,19 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Mapping
 
 from .provenance import CatalogueEvidence
 
-
-CONTENT_MATCH_METHODS = frozenset({
-    "SHA256",
-    "SHA1",
-    "MD5",
-    "CRC",
-})
+CONTENT_MATCH_METHODS = frozenset(
+    {
+        "SHA256",
+        "SHA1",
+        "MD5",
+        "CRC",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,8 +47,7 @@ class IdentificationEvidence:
             )
 
         normalized_details = {
-            str(key).strip(): str(value).strip()
-            for key, value in self.details.items()
+            str(key).strip(): str(value).strip() for key, value in self.details.items()
         }
 
         if any(not key for key in normalized_details):
@@ -117,9 +117,7 @@ class CanonicalReleaseIdentity:
         )
 
         normalized_conflicts = tuple(
-            conflict.strip()
-            for conflict in self.conflicts
-            if conflict.strip()
+            conflict.strip() for conflict in self.conflicts if conflict.strip()
         )
 
         object.__setattr__(
@@ -131,8 +129,7 @@ class CanonicalReleaseIdentity:
     @property
     def has_authoritative_content_match(self) -> bool:
         return any(
-            evidence.authoritative
-            and evidence.method in CONTENT_MATCH_METHODS
+            evidence.authoritative and evidence.method in CONTENT_MATCH_METHODS
             for evidence in self.evidence
         )
 

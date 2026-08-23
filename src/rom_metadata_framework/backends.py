@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Sequence
-
 
 DEFAULT_TIMEOUT_SECONDS = 30.0
 
@@ -33,9 +32,7 @@ class BackendExecutionError(BackendError):
         stdout: str,
         stderr: str,
     ) -> None:
-        super().__init__(
-            f"backend {executable!r} exited with status {returncode}"
-        )
+        super().__init__(f"backend {executable!r} exited with status {returncode}")
         self.executable = executable
         self.returncode = returncode
         self.stdout = stdout
@@ -222,10 +219,7 @@ class BackendRegistry:
     def discover_all(self) -> dict[str, BackendStatus]:
         """Discover availability for every registered backend."""
 
-        return {
-            name: discover_backend(self._specs[name])
-            for name in self.names()
-        }
+        return {name: discover_backend(self._specs[name]) for name in self.names()}
 
     def probe_all(
         self,
