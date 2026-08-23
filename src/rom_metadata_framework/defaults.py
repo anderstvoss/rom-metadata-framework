@@ -3,15 +3,18 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from .detection import CompositePlatformDetector
 from .dolphin import (
     DOLPHIN_EXECUTABLE,
     DolphinAdapter,
+    DolphinPlatformDetector,
 )
-from .nes import NesAdapter
+from .nes import NesAdapter, NesPlatformDetector
 from .routing import CompositeNormalizer
 from .xbox import (
     XDVDFS_EXECUTABLE,
     XboxAdapter,
+    XboxPlatformDetector,
 )
 
 
@@ -70,6 +73,27 @@ class DefaultRuntimeConfig:
 
 
 DEFAULT_RUNTIME_CONFIG = DefaultRuntimeConfig()
+
+
+def build_default_detector(
+    config: DefaultRuntimeConfig = DEFAULT_RUNTIME_CONFIG,
+) -> CompositePlatformDetector:
+    """Build the standard platform detector composition."""
+
+    if not isinstance(config, DefaultRuntimeConfig):
+        raise TypeError("config must be DefaultRuntimeConfig")
+
+    return CompositePlatformDetector(
+        (
+            NesPlatformDetector(),
+            DolphinPlatformDetector(
+                executable=config.dolphin_executable,
+            ),
+            XboxPlatformDetector(
+                executable=config.xbox_executable,
+            ),
+        )
+    )
 
 
 def build_default_normalizer(

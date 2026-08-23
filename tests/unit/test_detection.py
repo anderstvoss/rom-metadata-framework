@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from rom_metadata_framework.detection import (
@@ -95,3 +97,110 @@ def test_platform_candidate_rejects_invalid_confidence(
             platform="snes",
             confidence=confidence,
         )
+
+
+def test_composite_platform_detector_combines_independent_evidence(
+    tmp_path: Path,
+) -> None:
+    from rom_metadata_framework.detection import (
+        CompositePlatformDetector,
+        PlatformCandidate,
+        PlatformDetection,
+        PlatformEvidence,
+    )
+
+    class Detector:
+        def __init__(
+            self,
+            name: str,
+            platform: str,
+            confidence: int,
+        ) -> None:
+            self.name = name
+            self.platform = platform
+            self.confidence = confidence
+
+        def detect(self, path: Path) -> PlatformDetection:
+            return PlatformDetection(
+                candidates=(
+                    PlatformCandidate(
+                        platform=self.platform,
+                        confidence=self.confidence,
+                        evidence=(
+                            PlatformEvidence(
+                                source=self.name,
+                                method="test",
+                                value=self.platform,
+                                strength=self.confidence,
+                            ),
+                        ),
+                    ),
+                ),
+            )
+
+    path = tmp_path / "example.bin"
+    path.write_bytes(b"example")
+
+    detection = CompositePlatformDetector(
+        (
+            Detector("one", "nes", 90),
+            Detector("two", "xbox", 80),
+        )
+    ).detect(path)
+
+    assert tuple(candidate.platform for candidate in detection.candidates) == (
+        "nes",
+        "xbox",
+    )
+    assert detection.best is not None
+    assert detection.best.platform == "nes"
+
+
+def test_composite_platform_detector_merges_same_platform_evidence(
+    tmp_path: Path,
+) -> None:
+    from rom_metadata_framework.detection import (
+        CompositePlatformDetector,
+        PlatformCandidate,
+        PlatformDetection,
+        PlatformEvidence,
+    )
+
+    class Detector:
+        def __init__(self, name: str, confidence: int) -> None:
+            self.name = name
+            self.confidence = confidence
+
+        def detect(self, path: Path) -> PlatformDetection:
+            return PlatformDetection(
+                candidates=(
+                    PlatformCandidate(
+                        platform="nes",
+                        confidence=self.confidence,
+                        evidence=(
+                            PlatformEvidence(
+                                source=self.name,
+                                method="test",
+                                value="nes",
+                                strength=self.confidence,
+                            ),
+                        ),
+                    ),
+                ),
+            )
+
+    path = tmp_path / "example.bin"
+    path.write_bytes(b"example")
+
+    detection = CompositePlatformDetector(
+        (
+            Detector("one", 70),
+            Detector("two", 95),
+        )
+    ).detect(path)
+
+    assert len(detection.candidates) == 1
+    candidate = detection.candidates[0]
+    assert candidate.platform == "nes"
+    assert candidate.confidence == 95
+    assert tuple(evidence.source for evidence in candidate.evidence) == ("one", "two")
