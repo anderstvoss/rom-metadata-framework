@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
@@ -15,6 +16,7 @@ COMPARABLE_METADATA_FIELDS = (
     "languages",
     "player_counts",
     "multiplayer_features",
+    "identifiers",
 )
 
 
@@ -126,12 +128,30 @@ def _player_count_values(
     return tuple(sorted(normalized))
 
 
+def _identifier_values(
+    values: Sequence[object],
+) -> tuple[str, ...]:
+    keys = {
+        json.dumps(
+            (value.namespace, value.value),
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        for value in values
+    }
+
+    return tuple(sorted(keys))
+
+
 def _local_values(
     local: LocalContentMetadata | None,
     field_name: str,
 ) -> tuple[str, ...]:
     if local is None:
         return ()
+
+    if field_name == "identifiers":
+        return _identifier_values(local.identifiers)
 
     values = getattr(local, field_name)
 
@@ -148,12 +168,18 @@ def _provider_values(
     values = []
 
     for result in provider_results:
-        values.extend(
-            getattr(
-                result.metadata,
-                field_name,
+        if field_name == "identifiers":
+            values.extend(result.metadata.external_ids)
+        else:
+            values.extend(
+                getattr(
+                    result.metadata,
+                    field_name,
+                )
             )
-        )
+
+    if field_name == "identifiers":
+        return _identifier_values(values)
 
     if field_name == "player_counts":
         return _player_count_values(values)

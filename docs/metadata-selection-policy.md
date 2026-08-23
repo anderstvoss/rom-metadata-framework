@@ -71,7 +71,8 @@ Current comparable fields are:
 - regions;
 - languages;
 - player counts;
-- multiplayer features.
+- multiplayer features;
+- identifiers, compared only when namespace and opaque value both match.
 
 Reconciliation reports relationships such as agreement, partial agreement, and
 divergence. It does not produce a preferred metadata value.
@@ -81,6 +82,22 @@ Provider identity and ordering are not used as precedence signals.
 
 Fields without a sufficiently defined common semantic representation remain
 outside reconciliation until explicit mappings exist.
+
+Identifier reconciliation is deliberately conservative. A local identifier and
+provider external identifier agree only when their normalized namespaces and
+opaque identifier values are exactly equal. Identifier values are not
+case-folded because namespace-specific identifiers are not assumed to be
+case-insensitive.
+
+The following evidence remains intentionally outside reconciliation:
+
+- local artifact timestamps versus provider release dates, because build or
+  certificate timestamps do not imply a public release date;
+- local ratings versus provider age ratings, because local rating evidence is
+  not yet represented with a normalized rating system and rating value;
+- local media metadata versus provider media references, because the former
+  describes the represented artifact while the latter describes external
+  artwork or media assets.
 
 ## Separation from canonical identity
 
