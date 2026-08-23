@@ -12,6 +12,21 @@ DEFAULT_TIMEOUT_SECONDS = 30.0
 class BackendError(RuntimeError):
     """Base exception for external backend failures."""
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        backend_name: str | None = None,
+        configured_executable: str | None = None,
+        executable: str | None = None,
+        arguments: Sequence[str] = (),
+    ) -> None:
+        super().__init__(message)
+        self.backend_name = backend_name
+        self.configured_executable = configured_executable
+        self.executable = executable
+        self.arguments = tuple(str(argument) for argument in arguments)
+
 
 class BackendUnavailableError(BackendError):
     """Raised when a required external executable cannot be found."""
@@ -19,6 +34,25 @@ class BackendUnavailableError(BackendError):
 
 class BackendTimeoutError(BackendError):
     """Raised when an external backend exceeds its execution timeout."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        timeout: float | None = None,
+        backend_name: str | None = None,
+        configured_executable: str | None = None,
+        executable: str | None = None,
+        arguments: Sequence[str] = (),
+    ) -> None:
+        super().__init__(
+            message,
+            backend_name=backend_name,
+            configured_executable=configured_executable,
+            executable=executable,
+            arguments=arguments,
+        )
+        self.timeout = timeout
 
 
 class BackendExecutionError(BackendError):
@@ -31,9 +65,17 @@ class BackendExecutionError(BackendError):
         returncode: int,
         stdout: str,
         stderr: str,
+        backend_name: str | None = None,
+        configured_executable: str | None = None,
+        arguments: Sequence[str] = (),
     ) -> None:
-        super().__init__(f"backend {executable!r} exited with status {returncode}")
-        self.executable = executable
+        super().__init__(
+            f"backend {executable!r} exited with status {returncode}",
+            backend_name=backend_name,
+            configured_executable=configured_executable,
+            executable=executable,
+            arguments=arguments,
+        )
         self.returncode = returncode
         self.stdout = stdout
         self.stderr = stderr
@@ -115,12 +157,15 @@ def run_backend(
 
     status = discover_backend(spec)
 
+    args = tuple(str(argument) for argument in arguments)
+
     if not status.available or status.executable is None:
         raise BackendUnavailableError(
-            status.error or f"backend {spec.name!r} is unavailable"
+            status.error or f"backend {spec.name!r} is unavailable",
+            backend_name=spec.name,
+            configured_executable=spec.executable,
+            arguments=args,
         )
-
-    args = tuple(str(argument) for argument in arguments)
 
     try:
         completed = subprocess.run(
@@ -133,7 +178,12 @@ def run_backend(
         )
     except subprocess.TimeoutExpired as exc:
         raise BackendTimeoutError(
-            f"backend {spec.name!r} exceeded timeout of {timeout} seconds"
+            f"backend {spec.name!r} exceeded timeout of {timeout} seconds",
+            timeout=timeout,
+            backend_name=spec.name,
+            configured_executable=spec.executable,
+            executable=str(status.executable),
+            arguments=args,
         ) from exc
 
     if completed.returncode != 0:
@@ -142,6 +192,9 @@ def run_backend(
             returncode=completed.returncode,
             stdout=completed.stdout,
             stderr=completed.stderr,
+            backend_name=spec.name,
+            configured_executable=spec.executable,
+            arguments=args,
         )
 
     return BackendResult(

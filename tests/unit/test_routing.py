@@ -10,6 +10,7 @@ from rom_metadata_framework.capability import (
 from rom_metadata_framework.content import (
     NormalizedContentIdentity,
 )
+from rom_metadata_framework.contracts import NormalizerContractError
 from rom_metadata_framework.normalization import (
     NormalizerProbe,
     NormalizerProbeStatus,
@@ -462,7 +463,7 @@ def test_composite_rejects_incomplete_normalizer_contract() -> None:
             raise AssertionError("must not identify")
 
     with pytest.raises(
-        TypeError,
+        NormalizerContractError,
         match="RoutedNormalizer contract",
     ):
         CompositeNormalizer(

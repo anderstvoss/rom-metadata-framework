@@ -7,6 +7,7 @@ from typing import Protocol, runtime_checkable
 from .capability import (
     RuntimeCapability,
 )
+from .contracts import NormalizerContractError
 from .normalization import (
     NormalizationResult,
     NormalizerProbe,
@@ -112,9 +113,13 @@ class CompositeNormalizer:
             not isinstance(normalizer, RoutedNormalizer)
             for normalizer in candidates
         ):
-            raise TypeError(
-                "all normalizers must implement the "
-                "RoutedNormalizer contract"
+            raise NormalizerContractError(
+                (
+                    "all normalizers must implement the "
+                    "RoutedNormalizer contract"
+                ),
+                component="CompositeNormalizer",
+                operation="register",
             )
 
         self.normalizers = candidates
@@ -160,14 +165,21 @@ class CompositeNormalizer:
             probe = normalizer.probe(path)
 
             if not isinstance(probe, NormalizerProbe):
-                raise TypeError(
-                    "normalizer probe() must return NormalizerProbe"
+                raise NormalizerContractError(
+                    "normalizer probe() must return NormalizerProbe",
+                    component=normalizer.name,
+                    operation="probe",
                 )
 
             if probe.normalizer != normalizer.name.strip():
-                raise ValueError(
-                    "normalizer probe name does not match "
-                    "registered normalizer name"
+                raise NormalizerContractError(
+                    (
+                        "normalizer probe name does not match "
+                        "registered normalizer name"
+                    ),
+                    component=normalizer.name,
+                    operation="probe",
+                    field="normalizer",
                 )
 
             results.append(
