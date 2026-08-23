@@ -3,8 +3,16 @@ from pathlib import Path
 
 import pytest
 
+from rom_metadata_framework.capability import (
+    RuntimeCapability,
+    RuntimeCapabilityStatus,
+)
 from rom_metadata_framework.content import (
     NormalizedContentIdentity,
+)
+from rom_metadata_framework.normalization import (
+    NormalizerProbe,
+    NormalizerProbeStatus,
 )
 from rom_metadata_framework.routing import (
     AmbiguousNormalizerError,
@@ -16,6 +24,8 @@ from rom_metadata_framework.routing import (
 @dataclass(frozen=True)
 class FakeResult:
     content: NormalizedContentIdentity
+    local_metadata: None = None
+    physical_representation: None = None
 
 
 class FakeNormalizer:
@@ -29,8 +39,21 @@ class FakeNormalizer:
         self._supports = supports
         self.identify_calls = 0
 
-    def supports(self, path: Path) -> bool:
-        return self._supports
+    def runtime_capability(self) -> RuntimeCapability:
+        return RuntimeCapability(
+            name=f"{self.name}-normalization",
+            status=RuntimeCapabilityStatus.READY,
+        )
+
+    def probe(self, path: Path) -> NormalizerProbe:
+        return NormalizerProbe(
+            normalizer=self.name,
+            status=(
+                NormalizerProbeStatus.SUPPORTED
+                if self._supports
+                else NormalizerProbeStatus.UNSUPPORTED
+            ),
+        )
 
     def identify(self, path: Path) -> FakeResult:
         self.identify_calls += 1
@@ -193,18 +216,17 @@ class FakeProbeNormalizer:
         self.status = status
         self.identify_calls = 0
 
-    def probe(self, path: Path):
-        from rom_metadata_framework.normalization import (
-            NormalizerProbe,
+    def runtime_capability(self) -> RuntimeCapability:
+        return RuntimeCapability(
+            name=f"{self.name}-normalization",
+            status=RuntimeCapabilityStatus.READY,
         )
 
+    def probe(self, path: Path) -> NormalizerProbe:
         return NormalizerProbe(
             normalizer=self.name,
             status=self.status,
         )
-
-    def supports(self, path: Path) -> bool:
-        return self.probe(path).supported
 
     def identify(self, path: Path) -> FakeResult:
         self.identify_calls += 1
@@ -219,9 +241,6 @@ class FakeProbeNormalizer:
 def test_composite_terminal_probe_failure_is_explicit(
     tmp_path: Path,
 ) -> None:
-    from rom_metadata_framework.normalization import (
-        NormalizerProbeStatus,
-    )
     from rom_metadata_framework.routing import (
         NormalizerProbeFailureError,
     )
@@ -279,9 +298,6 @@ def test_composite_terminal_probe_failure_is_explicit(
 def test_composite_supported_claim_wins_over_other_probe_failure(
     tmp_path: Path,
 ) -> None:
-    from rom_metadata_framework.normalization import (
-        NormalizerProbeStatus,
-    )
 
     path = tmp_path / "source.bin"
     path.write_bytes(b"source")
@@ -314,9 +330,6 @@ def test_composite_supported_claim_wins_over_other_probe_failure(
 def test_composite_ambiguity_precedes_unrelated_probe_failure(
     tmp_path: Path,
 ) -> None:
-    from rom_metadata_framework.normalization import (
-        NormalizerProbeStatus,
-    )
 
     path = tmp_path / "source.bin"
     path.write_bytes(b"source")
@@ -360,9 +373,6 @@ def test_composite_ambiguity_precedes_unrelated_probe_failure(
 def test_composite_probe_results_preserve_all_adapter_outcomes(
     tmp_path: Path,
 ) -> None:
-    from rom_metadata_framework.normalization import (
-        NormalizerProbeStatus,
-    )
 
     path = tmp_path / "source.bin"
     path.write_bytes(b"source")
@@ -409,11 +419,6 @@ def test_composite_probe_results_preserve_all_adapter_outcomes(
 
 
 def test_composite_reports_runtime_capabilities_in_registration_order() -> None:
-    from rom_metadata_framework.capability import (
-        RuntimeCapability,
-        RuntimeCapabilityStatus,
-    )
-
     class CapabilityNormalizer:
         def __init__(self, name: str) -> None:
             self.name = name
@@ -424,10 +429,13 @@ def test_composite_reports_runtime_capabilities_in_registration_order() -> None:
                 status=RuntimeCapabilityStatus.READY,
             )
 
-        def supports(self, path: Path) -> bool:
-            return False
+        def probe(self, path: Path) -> NormalizerProbe:
+            return NormalizerProbe(
+                normalizer=self.name,
+                status=NormalizerProbeStatus.UNSUPPORTED,
+            )
 
-        def identify(self, path: Path):
+        def identify(self, path: Path) -> FakeResult:
             raise AssertionError("must not identify")
 
     router = CompositeNormalizer(
@@ -446,23 +454,17 @@ def test_composite_reports_runtime_capabilities_in_registration_order() -> None:
     assert all(item.ready for item in capabilities)
 
 
-def test_legacy_normalizer_runtime_capability_is_unknown() -> None:
-    from rom_metadata_framework.capability import RuntimeCapabilityStatus
+def test_composite_rejects_incomplete_normalizer_contract() -> None:
+    class IncompleteNormalizer:
+        name = "incomplete"
 
-    class LegacyNormalizer:
-        name = "legacy"
-
-        def supports(self, path: Path) -> bool:
-            return False
-
-        def identify(self, path: Path):
+        def identify(self, path: Path) -> FakeResult:
             raise AssertionError("must not identify")
 
-    router = CompositeNormalizer((LegacyNormalizer(),))
-
-    capability = router.runtime_capabilities()[0]
-
-    assert capability.name == "legacy-normalization"
-    assert capability.status is RuntimeCapabilityStatus.UNKNOWN
-    assert not capability.ready
-    assert capability.reason is not None
+    with pytest.raises(
+        TypeError,
+        match="RoutedNormalizer contract",
+    ):
+        CompositeNormalizer(
+            (IncompleteNormalizer(),)
+        )

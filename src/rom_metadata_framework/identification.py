@@ -11,6 +11,7 @@ from .hashing import GenericHashAdapter
 from .identity import RomIdentity
 from .local_metadata import LocalContentMetadata
 from .lookup import LookupIdentity
+from .normalization import NormalizationResult
 from .reconciliation import (
     PlatformReconciliation,
     reconcile_platform,
@@ -48,23 +49,14 @@ class LookupResolver(Protocol):
         ...
 
 
-class NormalizedContentResult(Protocol):
-    """Result exposing normalized content identity."""
-
-    @property
-    def content(self) -> NormalizedContentIdentity:
-        """Normalized content represented by the source file."""
-        ...
-
-
 class ContentNormalizer(Protocol):
-    """Adapter capable of producing normalized content."""
+    """Adapter capable of producing normalized content evidence."""
 
     def identify(
         self,
         path: Path,
-    ) -> NormalizedContentResult:
-        """Return normalized content represented by one file."""
+    ) -> NormalizationResult:
+        """Return complete normalization evidence for one file."""
         ...
 
 
@@ -145,16 +137,32 @@ def identify_file(
             normalized_result = None
 
         if normalized_result is not None:
+            if not isinstance(
+                normalized_result,
+                NormalizationResult,
+            ):
+                raise TypeError(
+                    "normalizer identify() must return a "
+                    "NormalizationResult-compatible object"
+                )
+
             normalized_content = normalized_result.content
 
-            candidate_physical_representation = getattr(
-                normalized_result,
-                "physical_representation",
-                None,
+            if not isinstance(
+                normalized_content,
+                NormalizedContentIdentity,
+            ):
+                raise TypeError(
+                    "normalizer content must be "
+                    "NormalizedContentIdentity"
+                )
+
+            physical_representation = (
+                normalized_result.physical_representation
             )
 
-            if candidate_physical_representation is not None and not isinstance(
-                candidate_physical_representation,
+            if physical_representation is not None and not isinstance(
+                physical_representation,
                 RepresentationIdentity,
             ):
                 raise TypeError(
@@ -162,23 +170,16 @@ def identify_file(
                     "RepresentationIdentity or None"
                 )
 
-            physical_representation = candidate_physical_representation
+            local_metadata = normalized_result.local_metadata
 
-            candidate_local_metadata = getattr(
-                normalized_result,
-                "local_metadata",
-                None,
-            )
-
-            if candidate_local_metadata is not None and not isinstance(
-                candidate_local_metadata,
+            if local_metadata is not None and not isinstance(
+                local_metadata,
                 LocalContentMetadata,
             ):
                 raise TypeError(
-                    "normalizer local_metadata must be LocalContentMetadata or None"
+                    "normalizer local_metadata must be "
+                    "LocalContentMetadata or None"
                 )
-
-            local_metadata = candidate_local_metadata
 
             lookup = LookupIdentity(
                 file_name=physical_identity.file_name or path.name,

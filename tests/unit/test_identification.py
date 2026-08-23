@@ -49,6 +49,8 @@ class FakeNormalizedResult:
         content: NormalizedContentIdentity,
     ) -> None:
         self.content = content
+        self.local_metadata = None
+        self.physical_representation = None
 
 
 class FakeNormalizer:
@@ -429,8 +431,27 @@ def test_identification_skips_normalized_lookup_when_router_has_no_match(
     class UnsupportedNormalizer:
         name = "unsupported"
 
-        def supports(self, path: Path) -> bool:
-            return False
+        def runtime_capability(self):
+            from rom_metadata_framework.capability import (
+                RuntimeCapability,
+                RuntimeCapabilityStatus,
+            )
+
+            return RuntimeCapability(
+                name="unsupported-normalization",
+                status=RuntimeCapabilityStatus.READY,
+            )
+
+        def probe(self, path: Path):
+            from rom_metadata_framework.normalization import (
+                NormalizerProbe,
+                NormalizerProbeStatus,
+            )
+
+            return NormalizerProbe(
+                normalizer=self.name,
+                status=NormalizerProbeStatus.UNSUPPORTED,
+            )
 
         def identify(self, path: Path):
             raise AssertionError("unsupported normalizer must not identify")
@@ -470,8 +491,27 @@ def test_identification_propagates_ambiguous_normalizer(
             self.name = name
             self.identify_calls = 0
 
-        def supports(self, path: Path) -> bool:
-            return True
+        def runtime_capability(self):
+            from rom_metadata_framework.capability import (
+                RuntimeCapability,
+                RuntimeCapabilityStatus,
+            )
+
+            return RuntimeCapability(
+                name=f"{self.name}-normalization",
+                status=RuntimeCapabilityStatus.READY,
+            )
+
+        def probe(self, path: Path):
+            from rom_metadata_framework.normalization import (
+                NormalizerProbe,
+                NormalizerProbeStatus,
+            )
+
+            return NormalizerProbe(
+                normalizer=self.name,
+                status=NormalizerProbeStatus.SUPPORTED,
+            )
 
         def identify(self, path: Path):
             self.identify_calls += 1
@@ -538,8 +578,17 @@ def test_identification_propagates_terminal_normalizer_probe_failure(
                 reason="backend unavailable",
             )
 
-        def supports(self, path: Path) -> bool:
-            return False
+        def runtime_capability(self):
+            from rom_metadata_framework.capability import (
+                RuntimeCapability,
+                RuntimeCapabilityStatus,
+            )
+
+            return RuntimeCapability(
+                name="failed-normalization",
+                status=RuntimeCapabilityStatus.UNAVAILABLE,
+                reason="backend unavailable",
+            )
 
         def identify(self, path: Path):
             raise AssertionError("failed normalizer must not identify")
@@ -887,6 +936,7 @@ def test_identification_preserves_normalizer_local_metadata(
         ) -> None:
             self.content = content
             self.local_metadata = local_metadata
+            self.physical_representation = None
 
     class MetadataNormalizer:
         def identify(
@@ -932,34 +982,6 @@ def test_identification_preserves_normalizer_local_metadata(
     assert resolver.lookup_calls == 1
 
 
-def test_identification_legacy_normalizer_has_no_local_metadata(
-    tmp_path: Path,
-) -> None:
-    path = tmp_path / "legacy.bin"
-    path.write_bytes(b"physical-bytes")
-
-    resolver = FakeResolver(
-        physical=None,
-        normalized=None,
-    )
-
-    result = identify_file(
-        path,
-        detector=FakeDetector(None),
-        resolver=resolver,
-        normalizer=FakeNormalizer(
-            HashSet(
-                sha1=("0123456789abcdef0123456789abcdef01234567"),
-            )
-        ),
-    )
-
-    assert result.normalized_content is not None
-    assert result.local_metadata is None
-    assert resolver.identify_calls == 1
-    assert resolver.lookup_calls == 1
-
-
 def test_identification_without_normalizer_has_no_local_metadata(
     tmp_path: Path,
 ) -> None:
@@ -995,6 +1017,7 @@ def test_identification_rejects_invalid_local_metadata_result(
             self.local_metadata = {
                 "platform": "nes",
             }
+            self.physical_representation = None
 
     class InvalidMetadataNormalizer:
         def identify(
@@ -1056,6 +1079,7 @@ def test_identification_preserves_normalizer_representation(
                 content = NormalizedContentIdentity(
                     kind="disc",
                 )
+                local_metadata = None
                 physical_representation = representation
 
             return Result()
@@ -1078,28 +1102,44 @@ def test_identification_preserves_normalizer_representation(
     }
 
 
-def test_identification_keeps_legacy_normalizer_without_representation(
+def test_identification_rejects_incomplete_normalizer_result(
     tmp_path: Path,
 ) -> None:
-    path = tmp_path / "legacy.bin"
+    import pytest
+
+    class IncompleteResult:
+        content = NormalizedContentIdentity(
+            kind="cartridge",
+        )
+
+    class IncompleteNormalizer:
+        def identify(
+            self,
+            path: Path,
+        ) -> IncompleteResult:
+            return IncompleteResult()
+
+    path = tmp_path / "incomplete.bin"
     path.write_bytes(b"physical-bytes")
 
-    result = identify_file(
-        path,
-        detector=FakeDetector(None),
-        resolver=FakeResolver(
-            physical=None,
-            normalized=None,
-        ),
-        normalizer=FakeNormalizer(
-            HashSet(
-                sha1=("0123456789abcdef0123456789abcdef01234567"),
-            )
-        ),
+    resolver = FakeResolver(
+        physical=None,
+        normalized=None,
     )
 
-    assert result.normalized_content is not None
-    assert result.physical_representation is None
+    with pytest.raises(
+        TypeError,
+        match="NormalizationResult-compatible",
+    ):
+        identify_file(
+            path,
+            detector=FakeDetector(None),
+            resolver=resolver,
+            normalizer=IncompleteNormalizer(),
+        )
+
+    assert resolver.identify_calls == 1
+    assert resolver.lookup_calls == 0
 
 
 def test_identification_rejects_invalid_normalizer_representation(
@@ -1120,6 +1160,7 @@ def test_identification_rejects_invalid_normalizer_representation(
                 content = NormalizedContentIdentity(
                     kind="disc",
                 )
+                local_metadata = None
                 physical_representation = "rvz"
 
             return Result()

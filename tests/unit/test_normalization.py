@@ -1,6 +1,8 @@
 import pytest
 
+from rom_metadata_framework.content import NormalizedContentIdentity
 from rom_metadata_framework.normalization import (
+    NormalizationResult,
     NormalizerProbe,
     NormalizerProbeStatus,
 )
@@ -116,3 +118,27 @@ def test_probe_rejects_empty_name() -> None:
             normalizer=" ",
             status=NormalizerProbeStatus.UNSUPPORTED,
         )
+
+
+
+def test_normalization_result_protocol_requires_complete_evidence() -> None:
+    class CompleteResult:
+        content = NormalizedContentIdentity(
+            kind="cartridge",
+        )
+        local_metadata = None
+        physical_representation = None
+
+    class IncompleteResult:
+        content = NormalizedContentIdentity(
+            kind="cartridge",
+        )
+
+    assert isinstance(
+        CompleteResult(),
+        NormalizationResult,
+    )
+    assert not isinstance(
+        IncompleteResult(),
+        NormalizationResult,
+    )
