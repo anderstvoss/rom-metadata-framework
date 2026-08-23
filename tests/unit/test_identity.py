@@ -67,3 +67,69 @@ def test_adapter_provenance_is_normalized() -> None:
     assert adapter.name == "generic-hash"
     assert adapter.version == "0.1.0"
     assert adapter.backend == "python"
+
+
+def test_specialized_identifiers_are_normalized() -> None:
+    identity = RomIdentity(
+        specialized_identifiers={
+            "  RetroAchievements  ": "  Example-Identifier  ",
+        }
+    )
+
+    assert (
+        identity.specialized_identifiers["retroachievements"]
+        == "Example-Identifier"
+    )
+
+
+def test_specialized_identifiers_are_immutable() -> None:
+    identity = RomIdentity(
+        specialized_identifiers={
+            "retroachievements": "example",
+        }
+    )
+
+    with pytest.raises(TypeError):
+        identity.specialized_identifiers["retroachievements"] = "changed"
+
+
+def test_specialized_identifier_rejects_empty_namespace() -> None:
+    with pytest.raises(ValueError):
+        RomIdentity(
+            specialized_identifiers={
+                "   ": "example",
+            }
+        )
+
+
+def test_specialized_identifier_rejects_empty_value() -> None:
+    with pytest.raises(ValueError):
+        RomIdentity(
+            specialized_identifiers={
+                "retroachievements": "   ",
+            }
+        )
+
+
+def test_specialized_identifier_rejects_normalized_duplicate_namespace() -> None:
+    with pytest.raises(ValueError):
+        RomIdentity(
+            specialized_identifiers={
+                "RetroAchievements": "first",
+                " retroachievements ": "second",
+            }
+        )
+
+
+def test_generic_md5_and_specialized_identifier_remain_distinct() -> None:
+    value = "cdd3c8c37322978ca8669b34bc89c804"
+
+    identity = RomIdentity(
+        hashes=HashSet(md5=value),
+        specialized_identifiers={
+            "retroachievements": value,
+        },
+    )
+
+    assert identity.hashes.md5 == value
+    assert identity.specialized_identifiers["retroachievements"] == value
