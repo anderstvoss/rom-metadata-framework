@@ -114,3 +114,15 @@ def test_resolved_metadata_external_ids_are_immutable() -> None:
         pass
     else:
         raise AssertionError("expected TypeError")
+
+
+def test_generic_hash_adapter_records_source_metadata(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "example.sfc"
+    path.write_bytes(b"rom-data")
+
+    identity = GenericHashAdapter().identify(path)
+
+    assert identity.file_name == "example.sfc"
+    assert identity.file_size == len(b"rom-data")

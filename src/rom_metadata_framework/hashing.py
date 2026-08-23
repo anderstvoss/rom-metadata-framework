@@ -55,6 +55,8 @@ class GenericHashAdapter:
 
         return RomIdentity(
             format=path.suffix.lower().lstrip(".") or None,
+            file_name=path.name,
+            file_size=path.stat().st_size,
             hashes=hash_file(path),
             adapter=AdapterProvenance(
                 name=self.name,
