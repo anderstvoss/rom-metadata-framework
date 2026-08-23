@@ -470,3 +470,149 @@ def test_enrichment_uses_reconciled_canonical_identity() -> None:
     assert result.provider_report.attempted == ("provider-a",)
     assert result.provider_report.unmatched == ("provider-a",)
     assert result.provider_results == ()
+
+
+def test_enrichment_exposes_derived_metadata_reconciliation() -> None:
+    from rom_metadata_framework.detection import PlatformDetection
+    from rom_metadata_framework.identification import IdentificationResult
+    from rom_metadata_framework.identity import RomIdentity
+    from rom_metadata_framework.local_metadata import (
+        LocalContentMetadata,
+        LocalMetadataProvenance,
+        LocalMetadataValue,
+    )
+    from rom_metadata_framework.metadata import (
+        MetadataProvenance,
+        MetadataValue,
+        ReleaseMetadata,
+    )
+    from rom_metadata_framework.metadata_collection import (
+        MetadataEnrichmentResult,
+    )
+    from rom_metadata_framework.metadata_provider import (
+        MetadataProviderResult,
+    )
+    from rom_metadata_framework.metadata_reconciliation import (
+        MetadataFieldReconciliationStatus,
+    )
+
+    local_provenance = LocalMetadataProvenance(
+        source="test-local",
+        method="header",
+    )
+    provider_provenance = MetadataProvenance(
+        source="provider-a",
+        source_id="record-1",
+    )
+
+    identification = IdentificationResult(
+        physical_identity=RomIdentity(),
+        platform_detection=PlatformDetection(),
+        local_metadata=LocalContentMetadata(
+            titles=(
+                LocalMetadataValue(
+                    value="Example Game",
+                    provenance=local_provenance,
+                ),
+            ),
+            regions=(
+                LocalMetadataValue(
+                    value="Japan",
+                    provenance=local_provenance,
+                ),
+            ),
+        ),
+    )
+
+    result = MetadataEnrichmentResult(
+        identification=identification,
+        provider_report=MetadataCollectionReport(
+            attempted=("provider-a",),
+            unmatched=(),
+            results=(
+                MetadataProviderResult(
+                    provider="provider-a",
+                    provider_id="record-1",
+                    metadata=ReleaseMetadata(
+                        titles=(
+                            MetadataValue(
+                                value="example game",
+                                provenance=provider_provenance,
+                            ),
+                        ),
+                        regions=(
+                            MetadataValue(
+                                value="USA",
+                                provenance=provider_provenance,
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    reconciliation = result.metadata_reconciliation
+
+    assert (
+        reconciliation.get("titles").status
+        is MetadataFieldReconciliationStatus.AGREEMENT
+    )
+    assert (
+        reconciliation.get("regions").status
+        is MetadataFieldReconciliationStatus.DIVERGENT
+    )
+    assert reconciliation.has_divergence
+
+    # Reconciliation is diagnostic only; the retained evidence is unchanged.
+    assert result.local_metadata is identification.local_metadata
+    assert result.provider_results == result.provider_report.results
+
+
+def test_enrichment_reconciliation_works_without_provider_report() -> None:
+    from rom_metadata_framework.detection import PlatformDetection
+    from rom_metadata_framework.identification import IdentificationResult
+    from rom_metadata_framework.identity import RomIdentity
+    from rom_metadata_framework.local_metadata import (
+        LocalContentMetadata,
+        LocalMetadataProvenance,
+        LocalMetadataValue,
+    )
+    from rom_metadata_framework.metadata_collection import (
+        MetadataEnrichmentResult,
+    )
+    from rom_metadata_framework.metadata_reconciliation import (
+        MetadataFieldReconciliationStatus,
+    )
+
+    local = LocalContentMetadata(
+        languages=(
+            LocalMetadataValue(
+                value="English",
+                provenance=LocalMetadataProvenance(
+                    source="test-local",
+                    method="header",
+                ),
+            ),
+        ),
+    )
+
+    result = MetadataEnrichmentResult(
+        identification=IdentificationResult(
+            physical_identity=RomIdentity(),
+            platform_detection=PlatformDetection(),
+            local_metadata=local,
+        ),
+    )
+
+    reconciliation = result.metadata_reconciliation
+
+    assert (
+        reconciliation.get("languages").status
+        is MetadataFieldReconciliationStatus.LOCAL_ONLY
+    )
+    assert (
+        reconciliation.get("titles").status
+        is MetadataFieldReconciliationStatus.UNRESOLVED
+    )
+    assert not reconciliation.has_divergence
