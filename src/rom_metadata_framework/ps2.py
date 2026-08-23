@@ -4,20 +4,29 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import iso9660 as _iso9660
 from .detection import (
     PlatformCandidate,
     PlatformDetection,
     PlatformEvidence,
 )
+from .iso9660 import (
+    BoundedIso9660,
+    Iso9660FormatError,
+)
 
-ISO_SECTOR_SIZE = 2048
-ISO_PVD_SECTOR = 16
-ISO_PVD_OFFSET = ISO_PVD_SECTOR * ISO_SECTOR_SIZE
-ISO_PVD_SIZE = ISO_SECTOR_SIZE
+ISO_SECTOR_SIZE = _iso9660.ISO_SECTOR_SIZE
+ISO_PVD_SECTOR = _iso9660.ISO_PVD_SECTOR
+ISO_PVD_OFFSET = _iso9660.ISO_PVD_OFFSET
+ISO_PVD_SIZE = _iso9660.ISO_PVD_SIZE
+ISO_STANDARD_IDENTIFIER = (
+    _iso9660.ISO_STANDARD_IDENTIFIER
+)
 
-ISO_STANDARD_IDENTIFIER = b"CD001"
 SYSTEM_CNF_NAME = "SYSTEM.CNF"
 
+# Preserve the historical PS2 parser bound independently of the more
+# general shared ISO9660 reader default.
 MAX_ROOT_DIRECTORY_SIZE = 4 * 1024 * 1024
 MAX_SYSTEM_CNF_SIZE = 64 * 1024
 
@@ -39,212 +48,6 @@ class Ps2IsoMetadata:
     product_code: str | None
     system_cnf_extent: int
     system_cnf_size: int
-
-
-@dataclass(frozen=True, slots=True)
-class _IsoDirectoryEntry:
-    name: str
-    extent: int
-    size: int
-    directory: bool
-
-
-def _decode_ascii_field(value: bytes) -> str:
-    return value.decode("ascii", errors="replace").rstrip(" \0")
-
-
-def _read_both_endian_u16(
-    data: bytes,
-    offset: int,
-    field_name: str,
-) -> int:
-    little = int.from_bytes(
-        data[offset : offset + 2],
-        "little",
-    )
-    big = int.from_bytes(
-        data[offset + 2 : offset + 4],
-        "big",
-    )
-
-    if little != big:
-        raise Ps2FormatError(
-            f"ISO9660 {field_name} endian values disagree"
-        )
-
-    return little
-
-
-def _read_both_endian_u32(
-    data: bytes,
-    offset: int,
-    field_name: str,
-) -> int:
-    little = int.from_bytes(
-        data[offset : offset + 4],
-        "little",
-    )
-    big = int.from_bytes(
-        data[offset + 4 : offset + 8],
-        "big",
-    )
-
-    if little != big:
-        raise Ps2FormatError(
-            f"ISO9660 {field_name} endian values disagree"
-        )
-
-    return little
-
-
-def _validate_extent(
-    path: Path,
-    *,
-    extent: int,
-    size: int,
-    field_name: str,
-) -> None:
-    file_size = path.stat().st_size
-    offset = extent * ISO_SECTOR_SIZE
-
-    if offset > file_size:
-        raise Ps2FormatError(
-            f"ISO9660 {field_name} extent lies beyond the file"
-        )
-
-    if size > file_size - offset:
-        raise Ps2FormatError(
-            f"ISO9660 {field_name} extends beyond the file"
-        )
-
-
-def _parse_directory_entry(
-    data: bytes,
-    offset: int,
-) -> tuple[_IsoDirectoryEntry | None, int]:
-    if offset >= len(data):
-        return None, len(data)
-
-    record_length = data[offset]
-
-    if record_length == 0:
-        next_sector = (
-            ((offset // ISO_SECTOR_SIZE) + 1)
-            * ISO_SECTOR_SIZE
-        )
-        return None, min(next_sector, len(data))
-
-    end = offset + record_length
-
-    if end > len(data):
-        raise Ps2FormatError(
-            "ISO9660 directory record extends beyond directory data"
-        )
-
-    record = data[offset:end]
-
-    if len(record) < 34:
-        raise Ps2FormatError(
-            "ISO9660 directory record is shorter than required fields"
-        )
-
-    name_length = record[32]
-    name_end = 33 + name_length
-
-    if name_end > len(record):
-        raise Ps2FormatError(
-            "ISO9660 directory identifier is truncated"
-        )
-
-    extent = _read_both_endian_u32(
-        record,
-        2,
-        "directory extent",
-    )
-    size = _read_both_endian_u32(
-        record,
-        10,
-        "directory size",
-    )
-    flags = record[25]
-
-    raw_name = record[33:name_end]
-
-    if raw_name == b"\x00":
-        name = "."
-    elif raw_name == b"\x01":
-        name = ".."
-    else:
-        name = _decode_ascii_field(raw_name)
-
-    return (
-        _IsoDirectoryEntry(
-            name=name,
-            extent=extent,
-            size=size,
-            directory=bool(flags & 0x02),
-        ),
-        end,
-    )
-
-
-def _find_root_file(
-    path: Path,
-    *,
-    root_extent: int,
-    root_size: int,
-    wanted_name: str,
-) -> _IsoDirectoryEntry | None:
-    if root_size <= 0:
-        raise Ps2FormatError(
-            "ISO9660 root directory has invalid size"
-        )
-
-    if root_size > MAX_ROOT_DIRECTORY_SIZE:
-        raise Ps2FormatError(
-            "ISO9660 root directory exceeds bounded parser limit"
-        )
-
-    _validate_extent(
-        path,
-        extent=root_extent,
-        size=root_size,
-        field_name="root directory",
-    )
-
-    with path.open("rb") as handle:
-        handle.seek(root_extent * ISO_SECTOR_SIZE)
-        data = handle.read(root_size)
-
-    if len(data) != root_size:
-        raise Ps2FormatError(
-            "ISO9660 root directory is truncated"
-        )
-
-    offset = 0
-
-    while offset < len(data):
-        entry, next_offset = _parse_directory_entry(
-            data,
-            offset,
-        )
-
-        if next_offset <= offset:
-            raise Ps2FormatError(
-                "ISO9660 directory parser made no forward progress"
-            )
-
-        offset = next_offset
-
-        if entry is None or entry.directory:
-            continue
-
-        normalized = entry.name.split(";", 1)[0].upper()
-
-        if normalized == wanted_name.upper():
-            return entry
-
-    return None
 
 
 def _parse_system_cnf(data: bytes) -> tuple[str, str | None]:
@@ -294,110 +97,29 @@ def inspect_ps2_iso(
 
     path = Path(path)
 
-    if not path.is_file():
-        raise Ps2FormatError(
-            f"source is not a regular file: {path}"
+    try:
+        iso = BoundedIso9660(
+            path,
+            max_directory_size=MAX_ROOT_DIRECTORY_SIZE,
         )
 
-    with path.open("rb") as handle:
-        handle.seek(ISO_PVD_OFFSET)
-        pvd = handle.read(ISO_PVD_SIZE)
-
-    if len(pvd) != ISO_PVD_SIZE:
-        raise Ps2FormatError(
-            "ISO9660 primary volume descriptor is truncated"
+        system_cnf = iso.find(
+            f"/{SYSTEM_CNF_NAME}"
         )
 
-    if (
-        pvd[0] != 1
-        or pvd[1:6] != ISO_STANDARD_IDENTIFIER
-        or pvd[6] != 1
-    ):
-        raise Ps2FormatError(
-            "ISO9660 primary volume descriptor is not present"
+        if system_cnf is None or system_cnf.directory:
+            raise Ps2FormatError(
+                "ISO9660 root does not contain SYSTEM.CNF"
+            )
+
+        system_data = iso.read_file(
+            f"/{SYSTEM_CNF_NAME}",
+            max_size=MAX_SYSTEM_CNF_SIZE,
         )
+    except Iso9660FormatError as exc:
+        raise Ps2FormatError(str(exc)) from exc
 
-    logical_block_size = _read_both_endian_u16(
-        pvd,
-        128,
-        "logical block size",
-    )
-
-    if logical_block_size != ISO_SECTOR_SIZE:
-        raise Ps2FormatError(
-            "ISO9660 logical block size is not 2048 bytes"
-        )
-
-    volume_identifier = _decode_ascii_field(
-        pvd[40:72]
-    )
-
-    root_record_length = pvd[156]
-
-    if root_record_length < 34:
-        raise Ps2FormatError(
-            "ISO9660 root directory record is invalid"
-        )
-
-    root_record = pvd[
-        156 : 156 + root_record_length
-    ]
-
-    if len(root_record) != root_record_length:
-        raise Ps2FormatError(
-            "ISO9660 root directory record is truncated"
-        )
-
-    root_extent = _read_both_endian_u32(
-        root_record,
-        2,
-        "root directory extent",
-    )
-    root_size = _read_both_endian_u32(
-        root_record,
-        10,
-        "root directory size",
-    )
-
-    system_cnf = _find_root_file(
-        path,
-        root_extent=root_extent,
-        root_size=root_size,
-        wanted_name=SYSTEM_CNF_NAME,
-    )
-
-    if system_cnf is None:
-        raise Ps2FormatError(
-            "ISO9660 root does not contain SYSTEM.CNF"
-        )
-
-    if system_cnf.size <= 0:
-        raise Ps2FormatError(
-            "SYSTEM.CNF has invalid size"
-        )
-
-    if system_cnf.size > MAX_SYSTEM_CNF_SIZE:
-        raise Ps2FormatError(
-            "SYSTEM.CNF exceeds bounded parser limit"
-        )
-
-    _validate_extent(
-        path,
-        extent=system_cnf.extent,
-        size=system_cnf.size,
-        field_name="SYSTEM.CNF",
-    )
-
-    with path.open("rb") as handle:
-        handle.seek(
-            system_cnf.extent * ISO_SECTOR_SIZE
-        )
-        system_data = handle.read(system_cnf.size)
-
-    if len(system_data) != system_cnf.size:
-        raise Ps2FormatError(
-            "SYSTEM.CNF is truncated"
-        )
+    volume_identifier = iso.volume_identifier
 
     boot_path, product_code = _parse_system_cnf(
         system_data

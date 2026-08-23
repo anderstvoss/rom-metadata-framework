@@ -222,19 +222,21 @@ def test_default_normalizer_rejects_invalid_config() -> None:
         build_default_normalizer(None)
 
 
-def test_default_detector_registers_nes_ps2_dolphin_xbox() -> None:
+def test_default_detector_registers_nes_ps2_ps3_dolphin_xbox() -> None:
     from rom_metadata_framework.defaults import build_default_detector
     from rom_metadata_framework.dolphin import DolphinPlatformDetector
     from rom_metadata_framework.nes import NesPlatformDetector
     from rom_metadata_framework.ps2 import Ps2PlatformDetector
+    from rom_metadata_framework.ps3 import Ps3PlatformDetector
     from rom_metadata_framework.xbox import XboxPlatformDetector
 
     detector = build_default_detector()
 
-    assert len(detector.detectors) == 4
-    nes, ps2, dolphin, xbox = detector.detectors
+    assert len(detector.detectors) == 5
+    nes, ps2, ps3, dolphin, xbox = detector.detectors
     assert isinstance(nes, NesPlatformDetector)
     assert isinstance(ps2, Ps2PlatformDetector)
+    assert isinstance(ps3, Ps3PlatformDetector)
     assert isinstance(dolphin, DolphinPlatformDetector)
     assert isinstance(xbox, XboxPlatformDetector)
 
@@ -254,8 +256,8 @@ def test_default_detector_passes_backend_configuration() -> None:
         )
     )
 
-    dolphin = detector.detectors[2]
-    xbox = detector.detectors[3]
+    dolphin = detector.detectors[3]
+    xbox = detector.detectors[4]
 
     assert isinstance(dolphin, DolphinPlatformDetector)
     assert isinstance(xbox, XboxPlatformDetector)
@@ -280,10 +282,18 @@ def test_default_inspector_registers_ps2() -> None:
 
     inspector = build_default_inspector()
 
-    assert len(inspector.inspectors) == 1
+    from rom_metadata_framework.ps3 import (
+        Ps3StructuralInspector,
+    )
+
+    assert len(inspector.inspectors) == 2
     assert isinstance(
         inspector.inspectors[0],
         Ps2StructuralInspector,
+    )
+    assert isinstance(
+        inspector.inspectors[1],
+        Ps3StructuralInspector,
     )
 
 

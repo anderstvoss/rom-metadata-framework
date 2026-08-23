@@ -8,6 +8,13 @@ yet. Versioning and release expectations are documented in
 
 ## [Unreleased]
 
+- Add bounded PlayStation 3 readable-ISO detection and structural metadata
+  inspection using `PS3_DISC.SFB` and `PS3_GAME/PARAM.SFO`, including
+  cross-checked title IDs, local title/version metadata, and no PS3
+  normalization path.
+- Extract the bounded ISO9660 reader used by PS2 into a shared internal
+  implementation for reuse by PS3 while preserving PS2 behavior.
+
 ### Added
 
 - Stable root consumer API.

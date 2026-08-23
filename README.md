@@ -51,6 +51,13 @@ contracts used by the framework.
 The standard application composition combines platform detection, Playmatch
 release lookup, and optional content normalization:
 
+
+The default detector currently recognizes NES, PlayStation 2,
+PlayStation 3, GameCube/Wii, and original Xbox sources. The default
+structural inspector provides non-normalizing local metadata for
+PlayStation 2 and directly readable PlayStation 3 ISO9660 disc images.
+PS3 does not currently have a normalization path.
+
 ```python
 from pathlib import Path
 

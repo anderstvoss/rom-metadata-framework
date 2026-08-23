@@ -15,6 +15,10 @@ from .ps2 import (
     Ps2PlatformDetector,
     Ps2StructuralInspector,
 )
+from .ps3 import (
+    Ps3PlatformDetector,
+    Ps3StructuralInspector,
+)
 from .routing import CompositeNormalizer
 from .xbox import (
     XDVDFS_EXECUTABLE,
@@ -92,6 +96,7 @@ def build_default_detector(
         (
             NesPlatformDetector(),
             Ps2PlatformDetector(),
+            Ps3PlatformDetector(),
             DolphinPlatformDetector(
                 executable=config.dolphin_executable,
             ),
@@ -115,6 +120,7 @@ def build_default_inspector(
     return CompositeStructuralInspector(
         (
             Ps2StructuralInspector(),
+            Ps3StructuralInspector(),
         )
     )
 
