@@ -9,6 +9,10 @@ from .metadata_provider import (
     MetadataProvider,
     MetadataProviderResult,
 )
+from .metadata_reconciliation import (
+    MetadataReconciliationReport,
+    reconcile_metadata,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -158,6 +162,22 @@ class MetadataEnrichmentResult:
             return ()
 
         return self.provider_report.results
+
+    @property
+    def metadata_reconciliation(
+        self,
+    ) -> MetadataReconciliationReport:
+        """Compare compatible local and provider metadata evidence.
+
+        Reconciliation is derived from the retained evidence layers and
+        does not assign precedence, alter canonical identity, or affect
+        verification or naming.
+        """
+
+        return reconcile_metadata(
+            self.local_metadata,
+            self.provider_results,
+        )
 
 
 def collect_identification_metadata(
