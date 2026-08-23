@@ -33,8 +33,28 @@ scan_pattern \
     '\banton\b'
 
 scan_pattern \
-    "local home directory" \
-    '/home/[A-Za-z0-9._-]+'
+    "Linux user home directory" \
+    '(/home|/var/home)/[A-Za-z0-9._-]+'
+
+scan_pattern \
+    "Linux removable-media user path" \
+    '/media/[A-Za-z0-9._-]+(/|$)'
+
+scan_pattern \
+    "Linux per-user runtime path" \
+    '/run/user/[0-9]+(/|$)'
+
+scan_pattern \
+    "macOS user home directory" \
+    '/Users/[A-Za-z0-9._-]+(/|$)'
+
+scan_pattern \
+    "Windows user profile path" \
+    '[A-Za-z]:\\Users\\[^\\/:*?"<>|]+'
+
+scan_pattern \
+    "WSL-mounted Windows user profile" \
+    '/mnt/[A-Za-z]/Users/[A-Za-z0-9._-]+(/|$)'
 
 scan_pattern \
     "homelab-specific filesystem path" \
