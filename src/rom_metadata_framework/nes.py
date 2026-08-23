@@ -9,6 +9,7 @@ from types import MappingProxyType
 
 from .content import NormalizedContentIdentity
 from .identity import HashSet
+from .representation import RepresentationIdentity
 
 NES_MAGIC = b"NES\x1a"
 NES_HEADER_SIZE = 16
@@ -27,6 +28,9 @@ class NesContentIdentity:
     content: NormalizedContentIdentity
     header_metadata: Mapping[str, str] = field(
         default_factory=dict,
+    )
+    physical_representation: RepresentationIdentity = field(
+        init=False,
     )
 
     def __post_init__(self) -> None:
@@ -62,6 +66,15 @@ class NesContentIdentity:
             self,
             "header_metadata",
             MappingProxyType(metadata),
+        )
+        object.__setattr__(
+            self,
+            "physical_representation",
+            RepresentationIdentity(
+                kind="cartridge-image",
+                format=representation,
+                metadata=metadata,
+            ),
         )
 
 

@@ -11,6 +11,7 @@ from .backends import BackendSpec, run_backend
 from .content import NormalizedContentIdentity
 from .hashing import hash_file
 from .identity import HashSet
+from .representation import RepresentationIdentity
 
 DOLPHIN_EXECUTABLE = "dolphin-tool"
 RETROACHIEVEMENTS_NAMESPACE = "retroachievements"
@@ -43,6 +44,9 @@ class DolphinDiscIdentity:
 
     container_metadata: Mapping[str, str] = field(
         default_factory=dict,
+    )
+    physical_representation: RepresentationIdentity = field(
+        init=False,
     )
 
     def __post_init__(self) -> None:
@@ -103,6 +107,16 @@ class DolphinDiscIdentity:
             self,
             "container_metadata",
             MappingProxyType(metadata),
+        )
+
+        object.__setattr__(
+            self,
+            "physical_representation",
+            RepresentationIdentity(
+                kind="disc-image",
+                format=self.format or "unknown",
+                metadata=metadata,
+            ),
         )
 
 
