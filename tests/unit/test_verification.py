@@ -205,3 +205,73 @@ def test_policy_can_allow_historical_verified_record() -> None:
     )
 
     assert report.status is VerificationStatus.KNOWN_GOOD
+
+
+def test_redump_current_sha1_without_status_is_known_good() -> None:
+    report = verify_release(
+        identity_with(
+            CatalogueEvidence(
+                source="playmatch",
+                match_method="SHA1",
+                authority="Redump",
+                catalogue_name="Nintendo - GameCube - Datfile",
+                file_status=None,
+                current_in_latest_catalogue=True,
+            )
+        )
+    )
+
+    assert report.status is VerificationStatus.KNOWN_GOOD
+    assert report.known_good
+
+
+def test_no_intro_without_status_is_not_known_good() -> None:
+    report = verify_release(
+        identity_with(
+            CatalogueEvidence(
+                source="playmatch",
+                match_method="SHA1",
+                authority="No-Intro",
+                catalogue_name="Nintendo - NES",
+                file_status=None,
+                current_in_latest_catalogue=True,
+            )
+        )
+    )
+
+    assert report.status is VerificationStatus.CATALOGUE_MATCH
+    assert not report.known_good
+
+
+def test_redump_crc_without_status_is_not_known_good() -> None:
+    report = verify_release(
+        identity_with(
+            CatalogueEvidence(
+                source="playmatch",
+                match_method="CRC",
+                authority="Redump",
+                catalogue_name="Nintendo - GameCube - Datfile",
+                file_status=None,
+                current_in_latest_catalogue=True,
+            )
+        )
+    )
+
+    assert report.status is VerificationStatus.CATALOGUE_MATCH
+
+
+def test_redump_historical_without_status_is_not_known_good() -> None:
+    report = verify_release(
+        identity_with(
+            CatalogueEvidence(
+                source="playmatch",
+                match_method="SHA1",
+                authority="Redump",
+                catalogue_name="Nintendo - Wii - Datfile",
+                file_status=None,
+                current_in_latest_catalogue=False,
+            )
+        )
+    )
+
+    assert report.status is VerificationStatus.CATALOGUE_MATCH

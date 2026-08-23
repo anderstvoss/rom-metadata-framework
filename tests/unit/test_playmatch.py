@@ -1,5 +1,6 @@
 import json
 from io import BytesIO
+from typing import Self
 from urllib.error import HTTPError
 
 import pytest
@@ -17,7 +18,7 @@ class FakeResponse:
     def __init__(self, payload: bytes) -> None:
         self._stream = BytesIO(payload)
 
-    def __enter__(self) -> "FakeResponse":
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, *args: object) -> None:
@@ -418,3 +419,66 @@ def test_playmatch_preserves_catalogue_provenance(
     assert evidence.current_in_latest_catalogue is True
     assert evidence.match_method == "SHA1"
     assert evidence.is_strong_content_match
+
+
+def test_playmatch_identify_lookup_accepts_normalized_hashes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from rom_metadata_framework.lookup import (
+        LookupIdentity,
+    )
+
+    normalized_sha1 = (
+        "a611b90b4833b20a364bf06ee3be3b9093ea4df9"
+    )
+
+    payload = {
+        "gameMatchType": "SHA1",
+        "game": {
+            "id": "11111111-1111-1111-1111-111111111111",
+            "name": "Super Mario Bros. 3 (USA)",
+        },
+        "platform": {
+            "id": "22222222-2222-2222-2222-222222222222",
+            "name": "Nintendo Entertainment System",
+        },
+        "externalMetadata": [],
+    }
+
+    def fake_urlopen(request, timeout):
+        assert timeout == 10.0
+
+        url = request.full_url
+
+        assert "fileName=mutated.nes" in url
+        assert "fileSize=393232" in url
+        assert f"sha1={normalized_sha1}" in url
+
+        return FakeResponse(
+            json.dumps(payload).encode()
+        )
+
+    monkeypatch.setattr(
+        "rom_metadata_framework.playmatch.urlopen",
+        fake_urlopen,
+    )
+
+    lookup = LookupIdentity(
+        file_name="mutated.nes",
+        file_size=393232,
+        hashes=HashSet(
+            sha1=normalized_sha1,
+        ),
+    )
+
+    result = PlaymatchResolver().identify_lookup(
+        lookup
+    )
+
+    assert result is not None
+    assert result.platform == "nes"
+    assert (
+        result.release_name
+        == "Super Mario Bros. 3 (USA)"
+    )
+    assert result.evidence[0].method == "SHA1"

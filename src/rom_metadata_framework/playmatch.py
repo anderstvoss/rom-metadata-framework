@@ -13,10 +13,10 @@ from .canonical import (
     IdentificationEvidence,
 )
 from .identity import RomIdentity
+from .lookup import LookupIdentity
 from .platforms import UnknownPlatformError, canonical_platform_name
 from .provenance import CatalogueEvidence
 from .resolvers import MetadataResolver, ResolvedMetadata
-
 
 DEFAULT_PLAYMATCH_API_URL = "https://playmatch.retrorealm.dev/api/v2"
 DEFAULT_PLAYMATCH_TIMEOUT = 10.0
@@ -58,9 +58,19 @@ class PlaymatchResolver:
         self,
         identity: RomIdentity,
     ) -> CanonicalReleaseIdentity | None:
-        """Return provider-independent release identity from Playmatch."""
+        """Identify a release from physical-file identity."""
 
-        payload = self._identify_payload(identity)
+        return self.identify_lookup(
+            LookupIdentity.from_rom_identity(identity)
+        )
+
+    def identify_lookup(
+        self,
+        lookup: LookupIdentity,
+    ) -> CanonicalReleaseIdentity | None:
+        """Identify a release from an explicit provider lookup identity."""
+
+        payload = self._identify_payload(lookup)
 
         match_type = payload.get("gameMatchType")
 
@@ -123,7 +133,7 @@ class PlaymatchResolver:
 
         catalogue_evidence = self._catalogue_evidence(
             payload,
-            identity,
+            lookup,
             match_type,
         )
 
@@ -153,25 +163,23 @@ class PlaymatchResolver:
             external_ids=canonical.external_ids,
         )
 
-    def _identify_payload(self, identity: RomIdentity) -> dict[str, Any]:
-        if identity.file_name is None or identity.file_size is None:
-            raise ValueError(
-                "Playmatch resolution requires file_name and file_size"
-            )
-
+    def _identify_payload(
+        self,
+        lookup: LookupIdentity,
+    ) -> dict[str, Any]:
         query: dict[str, str | int] = {
-            "fileName": identity.file_name,
-            "fileSize": identity.file_size,
+            "fileName": lookup.file_name,
+            "fileSize": lookup.file_size,
         }
 
-        if identity.hashes.sha1 is not None:
-            query["sha1"] = identity.hashes.sha1
+        if lookup.hashes.sha1 is not None:
+            query["sha1"] = lookup.hashes.sha1
 
-        if identity.hashes.md5 is not None:
-            query["md5"] = identity.hashes.md5
+        if lookup.hashes.md5 is not None:
+            query["md5"] = lookup.hashes.md5
 
-        if identity.hashes.crc32 is not None:
-            query["crc"] = identity.hashes.crc32
+        if lookup.hashes.crc32 is not None:
+            query["crc"] = lookup.hashes.crc32
 
         url = (
             f"{self.base_url}/identify/relations?"
@@ -220,7 +228,7 @@ class PlaymatchResolver:
     @staticmethod
     def _catalogue_evidence(
         payload: dict[str, Any],
-        identity: RomIdentity,
+        lookup: LookupIdentity,
         match_type: str,
     ) -> tuple[CatalogueEvidence, ...]:
         raw_files = payload.get("gameFiles", [])
@@ -252,13 +260,13 @@ class PlaymatchResolver:
         expected: str | None
 
         if match_type == "SHA256":
-            expected = getattr(identity.hashes, "sha256", None)
+            expected = getattr(lookup.hashes, "sha256", None)
         elif match_type == "SHA1":
-            expected = identity.hashes.sha1
+            expected = lookup.hashes.sha1
         elif match_type == "MD5":
-            expected = identity.hashes.md5
+            expected = lookup.hashes.md5
         elif match_type == "CRC":
-            expected = identity.hashes.crc32
+            expected = lookup.hashes.crc32
         else:
             expected = None
 
