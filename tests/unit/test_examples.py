@@ -47,6 +47,7 @@ def test_getting_started_references_executable_examples() -> None:
     assert "examples/identify_release.py" in guide
     assert "examples/runtime_capabilities.py" in guide
     assert "build_default_detector" in guide
+    assert "build_default_inspector" in guide
     assert "build_default_normalizer" in guide
     assert "PlaymatchResolver" in guide
 

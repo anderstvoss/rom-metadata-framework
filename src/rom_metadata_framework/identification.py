@@ -6,10 +6,18 @@ from typing import Protocol
 
 from .canonical import CanonicalReleaseIdentity
 from .content import NormalizedContentIdentity
-from .contracts import NormalizerContractError
+from .contracts import (
+    InspectionContractError,
+    NormalizerContractError,
+    StructuralEvidenceConflictError,
+)
 from .detection import PlatformDetection, PlatformDetector
 from .hashing import GenericHashAdapter
 from .identity import RomIdentity
+from .inspection import (
+    StructuralInspectionResult,
+    StructuralInspector,
+)
 from .local_metadata import LocalContentMetadata
 from .lookup import LookupIdentity
 from .normalization import NormalizationResult
@@ -59,6 +67,30 @@ class ContentNormalizer(Protocol):
     ) -> NormalizationResult:
         """Return complete normalization evidence for one file."""
         ...
+
+
+def _merge_structural_evidence(
+    current,
+    incoming,
+    *,
+    field: str,
+):
+    if current is None:
+        return incoming
+
+    if incoming is None:
+        return current
+
+    if current != incoming:
+        raise StructuralEvidenceConflictError(
+            (
+                "structural inspector and normalizer "
+                f"{field} evidence disagree"
+            ),
+            field=field,
+        )
+
+    return current
 
 
 @dataclass(frozen=True, slots=True)
@@ -158,8 +190,14 @@ def identify_file(
     detector: PlatformDetector,
     resolver: LookupResolver,
     normalizer: ContentNormalizer | None = None,
+    inspector: StructuralInspector | None = None,
 ) -> IdentificationResult:
-    """Identify one file while preserving physical and normalized evidence."""
+    """Identify one file while preserving independent evidence paths.
+
+    Physical provider lookup occurs before optional structural inspection and
+    content normalization. Structural inspection may add representation and
+    local metadata evidence but never performs normalized provider lookup.
+    """
 
     path = Path(path)
 
@@ -172,6 +210,63 @@ def identify_file(
     physical_representation = None
     local_metadata = None
     normalized_match = None
+
+    if inspector is not None:
+        inspection_result = inspector.inspect(path)
+
+        if inspection_result is not None:
+            if not isinstance(
+                inspection_result,
+                StructuralInspectionResult,
+            ):
+                raise InspectionContractError(
+                    (
+                        "inspector inspect() must return "
+                        "StructuralInspectionResult or None"
+                    ),
+                    component=type(inspector).__name__,
+                    operation="inspect",
+                )
+
+            physical_representation = (
+                inspection_result.physical_representation
+            )
+
+            if (
+                physical_representation is not None
+                and not isinstance(
+                    physical_representation,
+                    RepresentationIdentity,
+                )
+            ):
+                raise InspectionContractError(
+                    (
+                        "inspector physical_representation must be "
+                        "RepresentationIdentity or None"
+                    ),
+                    component=type(inspector).__name__,
+                    operation="inspect",
+                    field="physical_representation",
+                )
+
+            local_metadata = inspection_result.local_metadata
+
+            if (
+                local_metadata is not None
+                and not isinstance(
+                    local_metadata,
+                    LocalContentMetadata,
+                )
+            ):
+                raise InspectionContractError(
+                    (
+                        "inspector local_metadata must be "
+                        "LocalContentMetadata or None"
+                    ),
+                    component=type(inspector).__name__,
+                    operation="inspect",
+                    field="local_metadata",
+                )
 
     if normalizer is not None:
         try:
@@ -209,13 +304,16 @@ def identify_file(
                     field="content",
                 )
 
-            physical_representation = (
+            normalized_representation = (
                 normalized_result.physical_representation
             )
 
-            if physical_representation is not None and not isinstance(
-                physical_representation,
-                RepresentationIdentity,
+            if (
+                normalized_representation is not None
+                and not isinstance(
+                    normalized_representation,
+                    RepresentationIdentity,
+                )
             ):
                 raise NormalizerContractError(
                     (
@@ -227,11 +325,16 @@ def identify_file(
                     field="physical_representation",
                 )
 
-            local_metadata = normalized_result.local_metadata
+            normalized_local_metadata = (
+                normalized_result.local_metadata
+            )
 
-            if local_metadata is not None and not isinstance(
-                local_metadata,
-                LocalContentMetadata,
+            if (
+                normalized_local_metadata is not None
+                and not isinstance(
+                    normalized_local_metadata,
+                    LocalContentMetadata,
+                )
             ):
                 raise NormalizerContractError(
                     (
@@ -242,6 +345,17 @@ def identify_file(
                     operation="identify",
                     field="local_metadata",
                 )
+
+            physical_representation = _merge_structural_evidence(
+                physical_representation,
+                normalized_representation,
+                field="physical_representation",
+            )
+            local_metadata = _merge_structural_evidence(
+                local_metadata,
+                normalized_local_metadata,
+                field="local_metadata",
+            )
 
             lookup = LookupIdentity(
                 file_name=physical_identity.file_name or path.name,

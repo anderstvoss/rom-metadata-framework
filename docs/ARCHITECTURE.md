@@ -33,6 +33,11 @@ physical file
    |                                                    |
    +--> physical provider lookup -----------------------+
    |                                                    |
+   +--> optional structural inspector                   |
+   |        |                                           |
+   |        +--> physical representation                |
+   |        +--> local structural metadata              |
+   |                                                    |
    +--> optional content normalizer                     |
             |                                           |
             +--> physical representation                |
@@ -48,9 +53,12 @@ physical file
                                               canonical release identity
 ~~~
 
-The physical lookup is intentionally performed before normalization.
+The physical lookup is intentionally performed before structural inspection
+or normalization.
 
-Normalization is therefore not a prerequisite for provider lookup. It is an
+Neither structural inspection nor normalization is therefore a prerequisite
+for physical provider lookup. Structural inspection extracts representation or
+artifact-local metadata without creating canonical content. Normalization is an
 additional evidence path used when a format can be reduced to a more canonical
 content representation.
 
@@ -124,12 +132,23 @@ The standard normalizer currently supports:
 See [Runtime Backends](runtime-backends.md) for backend contracts and failure
 semantics.
 
-## Local structural metadata
+## Structural inspection and local metadata
 
-Normalization may also return `LocalContentMetadata`.
+Some artifact-local evidence does not require or imply content normalization.
 
-This represents trustworthy facts extracted directly from the represented
-artifact, such as:
+A `StructuralInspector` may return a `RepresentationIdentity`,
+`LocalContentMetadata`, or both without producing a
+`NormalizedContentIdentity`. Structural inspection therefore does not create
+normalized hashes and does not initiate normalized provider lookup.
+
+Normalization may also return representation and local-metadata evidence when
+extracting those values is naturally part of the normalization process.
+`identify_file()` preserves evidence from both paths. If an inspector and a
+normalizer independently return the same structural evidence type, the values
+must agree; conflicting evidence is rejected rather than silently overwritten.
+
+`LocalContentMetadata` represents trustworthy facts extracted directly from the
+represented artifact, such as:
 
 - internal titles;
 - product or title identifiers;
@@ -259,6 +278,7 @@ The standard application composition is built from one
 from rom_metadata_framework.defaults import (
     DefaultRuntimeConfig,
     build_default_detector,
+    build_default_inspector,
     build_default_normalizer,
 )
 from rom_metadata_framework.playmatch import PlaymatchResolver
@@ -266,12 +286,15 @@ from rom_metadata_framework.playmatch import PlaymatchResolver
 config = DefaultRuntimeConfig()
 
 detector = build_default_detector(config)
+inspector = build_default_inspector(config)
 normalizer = build_default_normalizer(config)
 resolver = PlaymatchResolver()
 ~~~
 
-Detector and normalizer construction share backend executable configuration so
-Dolphin and xdvdfs use one consistent runtime definition.
+Detector, structural-inspector, and normalizer construction use the same
+`DefaultRuntimeConfig`. The default structural inspector is dependency-free;
+backend executable configuration remains relevant to Dolphin and xdvdfs
+detection and normalization.
 
 Runtime capability reporting is separately available through
 `build_default_runtime_report()`.

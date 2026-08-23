@@ -36,6 +36,7 @@ The complete standard composition requires:
 
 - a platform detector;
 - a release resolver;
+- a structural inspector;
 - a content normalizer.
 
 ~~~python
@@ -45,6 +46,7 @@ from rom_metadata_framework import identify_file
 from rom_metadata_framework.defaults import (
     DefaultRuntimeConfig,
     build_default_detector,
+    build_default_inspector,
     build_default_normalizer,
 )
 from rom_metadata_framework.playmatch import PlaymatchResolver
@@ -55,6 +57,7 @@ result = identify_file(
     Path("game.rom"),
     detector=build_default_detector(config),
     resolver=PlaymatchResolver(),
+    inspector=build_default_inspector(config),
     normalizer=build_default_normalizer(config),
 )
 ~~~

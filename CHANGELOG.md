@@ -20,3 +20,7 @@ yet. Versioning and release expectations are documented in
 - Repository packaging, distribution, and release-readiness validation.
 - Runnable standard-composition examples and release-consistent package
   artifact validation.
+- PlayStation 2 ISO9660 detection using root `SYSTEM.CNF` / `BOOT2`
+  structural evidence.
+- Non-normalizing structural inspection for physical-representation and local
+  artifact metadata, with PS2 as the first default inspector.

@@ -1264,3 +1264,210 @@ def test_identification_result_conflict_helpers() -> None:
     assert not result.identified
     assert result.has_release_conflict
     assert result.has_platform_conflict
+
+
+
+def test_identification_preserves_structural_inspection_without_normalization(
+    tmp_path: Path,
+) -> None:
+    from rom_metadata_framework.inspection import (
+        StructuralInspectionResult,
+    )
+    from rom_metadata_framework.local_metadata import (
+        LocalContentMetadata,
+    )
+    from rom_metadata_framework.representation import (
+        RepresentationIdentity,
+    )
+
+    path = tmp_path / "physical.iso"
+    path.write_bytes(b"physical-bytes")
+
+    representation = RepresentationIdentity(
+        kind="disc-image",
+        format="iso9660",
+    )
+    metadata = LocalContentMetadata(
+        platform="playstation-2",
+        boot={"path": r"cdrom0:\BOOT.ELF;1"},
+    )
+
+    class Inspector:
+        name = "test"
+
+        def inspect(self, inspected_path: Path):
+            return StructuralInspectionResult(
+                physical_representation=representation,
+                local_metadata=metadata,
+            )
+
+    resolver = FakeResolver(
+        physical=None,
+        normalized=None,
+    )
+
+    result = identify_file(
+        path,
+        detector=FakeDetector("playstation-2"),
+        resolver=resolver,
+        inspector=Inspector(),
+    )
+
+    assert result.physical_representation is representation
+    assert result.local_metadata is metadata
+    assert result.normalized_content is None
+    assert result.normalized_match is None
+
+    # Structural inspection must not trigger normalized lookup.
+    assert resolver.lookup_calls == 0
+
+
+def test_identification_runs_physical_lookup_before_inspection(
+    tmp_path: Path,
+) -> None:
+    from rom_metadata_framework.inspection import (
+        StructuralInspectionResult,
+    )
+    from rom_metadata_framework.local_metadata import (
+        LocalContentMetadata,
+    )
+
+    path = tmp_path / "physical.iso"
+    path.write_bytes(b"physical-bytes")
+
+    class OrderedResolver:
+        def __init__(self) -> None:
+            self.identify_calls = 0
+            self.lookup_calls = 0
+
+        def identify(self, identity):
+            self.identify_calls += 1
+
+        def identify_lookup(self, lookup):
+            self.lookup_calls += 1
+
+    resolver = OrderedResolver()
+
+    class Inspector:
+        name = "ordered"
+
+        def inspect(self, inspected_path: Path):
+            assert resolver.identify_calls == 1
+
+            return StructuralInspectionResult(
+                local_metadata=LocalContentMetadata(
+                    platform="playstation-2",
+                ),
+            )
+
+    result = identify_file(
+        path,
+        detector=FakeDetector("playstation-2"),
+        resolver=resolver,
+        inspector=Inspector(),
+    )
+
+    assert result.local_metadata is not None
+    assert resolver.identify_calls == 1
+    assert resolver.lookup_calls == 0
+
+
+def test_identification_rejects_invalid_inspector_result(
+    tmp_path: Path,
+) -> None:
+    import pytest
+
+    from rom_metadata_framework.contracts import (
+        InspectionContractError,
+    )
+
+    path = tmp_path / "physical.iso"
+    path.write_bytes(b"physical-bytes")
+
+    class InvalidInspector:
+        name = "invalid"
+
+        def inspect(self, inspected_path: Path):
+            return "invalid"
+
+    with pytest.raises(
+        InspectionContractError,
+        match="StructuralInspectionResult",
+    ):
+        identify_file(
+            path,
+            detector=FakeDetector("playstation-2"),
+            resolver=FakeResolver(
+                physical=None,
+                normalized=None,
+            ),
+            inspector=InvalidInspector(),
+        )
+
+
+def test_identification_rejects_conflicting_structural_evidence(
+    tmp_path: Path,
+) -> None:
+    import pytest
+
+    from rom_metadata_framework.content import (
+        NormalizedContentIdentity,
+    )
+    from rom_metadata_framework.contracts import (
+        StructuralEvidenceConflictError,
+    )
+    from rom_metadata_framework.inspection import (
+        StructuralInspectionResult,
+    )
+    from rom_metadata_framework.representation import (
+        RepresentationIdentity,
+    )
+
+    path = tmp_path / "physical.iso"
+    path.write_bytes(b"physical-bytes")
+
+    class Inspector:
+        name = "test"
+
+        def inspect(self, inspected_path: Path):
+            return StructuralInspectionResult(
+                physical_representation=RepresentationIdentity(
+                    kind="disc-image",
+                    format="iso9660",
+                ),
+            )
+
+    class NormalizationEvidence:
+        content = NormalizedContentIdentity(
+            kind="test-content",
+            hashes=HashSet(
+                sha1=(
+                    "89abcdef0123456789abcdef"
+                    "0123456789abcdef"
+                )
+            ),
+        )
+        local_metadata = None
+        physical_representation = RepresentationIdentity(
+            kind="disc-image",
+            format="rvz",
+        )
+
+    class Normalizer:
+        def identify(self, normalized_path: Path):
+            return NormalizationEvidence()
+
+    with pytest.raises(
+        StructuralEvidenceConflictError,
+        match="physical_representation",
+    ):
+        identify_file(
+            path,
+            detector=FakeDetector("playstation-2"),
+            resolver=FakeResolver(
+                physical=None,
+                normalized=None,
+            ),
+            normalizer=Normalizer(),
+            inspector=Inspector(),
+        )

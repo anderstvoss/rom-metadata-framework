@@ -13,6 +13,7 @@ from rom_metadata_framework import (
 from rom_metadata_framework.defaults import (
     DefaultRuntimeConfig,
     build_default_detector,
+    build_default_inspector,
     build_default_normalizer,
 )
 from rom_metadata_framework.playmatch import PlaymatchResolver
@@ -23,7 +24,7 @@ def identify_path(
     *,
     config: DefaultRuntimeConfig | None = None,
 ):
-    """Identify one path using the standard detector and normalizer."""
+    """Identify one path using the standard detector, inspector, and normalizer."""
 
     runtime_config = config or DefaultRuntimeConfig()
 
@@ -31,6 +32,7 @@ def identify_path(
         path,
         detector=build_default_detector(runtime_config),
         resolver=PlaymatchResolver(),
+        inspector=build_default_inspector(runtime_config),
         normalizer=build_default_normalizer(runtime_config),
     )
 

@@ -9,8 +9,12 @@ from .dolphin import (
     DolphinAdapter,
     DolphinPlatformDetector,
 )
+from .inspection import CompositeStructuralInspector
 from .nes import NesAdapter, NesPlatformDetector
-from .ps2 import Ps2PlatformDetector
+from .ps2 import (
+    Ps2PlatformDetector,
+    Ps2StructuralInspector,
+)
 from .routing import CompositeNormalizer
 from .xbox import (
     XDVDFS_EXECUTABLE,
@@ -94,6 +98,23 @@ def build_default_detector(
             XboxPlatformDetector(
                 executable=config.xbox_executable,
             ),
+        )
+    )
+
+
+def build_default_inspector(
+    config: DefaultRuntimeConfig = DEFAULT_RUNTIME_CONFIG,
+) -> CompositeStructuralInspector:
+    """Build the standard non-normalizing structural inspector."""
+
+    if not isinstance(config, DefaultRuntimeConfig):
+        raise TypeError(
+            "config must be DefaultRuntimeConfig"
+        )
+
+    return CompositeStructuralInspector(
+        (
+            Ps2StructuralInspector(),
         )
     )
 

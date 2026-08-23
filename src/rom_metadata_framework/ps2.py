@@ -463,3 +463,80 @@ class Ps2PlatformDetector:
                 ),
             ),
         )
+
+
+class Ps2StructuralInspector:
+    """Extract PS2 representation and local metadata without normalization."""
+
+    name = "ps2"
+
+    def inspect(
+        self,
+        path: Path,
+    ):
+        """Return PS2 structural evidence when the source is supported."""
+
+        from .inspection import StructuralInspectionResult
+        from .local_metadata import (
+            LocalContentMetadata,
+            LocalIdentifier,
+            LocalMetadataProvenance,
+        )
+        from .representation import RepresentationIdentity
+
+        path = Path(path)
+
+        try:
+            metadata = inspect_ps2_iso(path)
+        except (
+            OSError,
+            Ps2FormatError,
+        ):
+            return None
+
+        provenance = LocalMetadataProvenance(
+            source="system.cnf",
+            method="boot2",
+            raw_value=metadata.boot_path,
+        )
+
+        identifiers = ()
+
+        if metadata.product_code is not None:
+            identifiers = (
+                LocalIdentifier(
+                    namespace="ps2-product-code",
+                    value=metadata.product_code,
+                    provenance=provenance,
+                ),
+            )
+
+        representation = RepresentationIdentity(
+            kind="disc-image",
+            format="iso9660",
+            metadata={
+                "volume_identifier": metadata.volume_identifier,
+            },
+        )
+
+        local_metadata = LocalContentMetadata(
+            platform="playstation-2",
+            identifiers=identifiers,
+            boot={
+                "path": metadata.boot_path,
+            },
+            native_metadata={
+                "volume_identifier": metadata.volume_identifier,
+                "system_cnf_extent": str(
+                    metadata.system_cnf_extent
+                ),
+                "system_cnf_size": str(
+                    metadata.system_cnf_size
+                ),
+            },
+        )
+
+        return StructuralInspectionResult(
+            physical_representation=representation,
+            local_metadata=local_metadata,
+        )

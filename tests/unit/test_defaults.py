@@ -268,3 +268,32 @@ def test_default_detector_rejects_invalid_config() -> None:
 
     with pytest.raises(TypeError, match="DefaultRuntimeConfig"):
         build_default_detector(None)
+
+
+def test_default_inspector_registers_ps2() -> None:
+    from rom_metadata_framework.defaults import (
+        build_default_inspector,
+    )
+    from rom_metadata_framework.ps2 import (
+        Ps2StructuralInspector,
+    )
+
+    inspector = build_default_inspector()
+
+    assert len(inspector.inspectors) == 1
+    assert isinstance(
+        inspector.inspectors[0],
+        Ps2StructuralInspector,
+    )
+
+
+def test_default_inspector_rejects_invalid_config() -> None:
+    from rom_metadata_framework.defaults import (
+        build_default_inspector,
+    )
+
+    with pytest.raises(
+        TypeError,
+        match="DefaultRuntimeConfig",
+    ):
+        build_default_inspector(None)
