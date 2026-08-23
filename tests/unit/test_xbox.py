@@ -488,3 +488,79 @@ def test_xbox_platform_detector_returns_unresolved_without_support(
 
     assert detection.best is None
     assert detection.candidates == ()
+
+
+def test_xbe_certificate_address_before_image_base_is_rejected() -> None:
+    data = bytearray(make_xbe())
+    struct.pack_into("<I", data, 0x118, 0x0000FFFF)
+
+    with pytest.raises(
+        XboxResponseError,
+        match="precedes the image base",
+    ):
+        parse_xbe_certificate(bytes(data))
+
+
+def test_xbe_certificate_outside_file_is_rejected() -> None:
+    data = bytearray(make_xbe())
+    struct.pack_into(
+        "<I",
+        data,
+        0x118,
+        0x00010000 + len(data),
+    )
+
+    with pytest.raises(
+        XboxResponseError,
+        match="certificate lies outside the file",
+    ):
+        parse_xbe_certificate(bytes(data))
+
+
+def test_xbe_short_certificate_is_rejected() -> None:
+    data = bytearray(make_xbe())
+    struct.pack_into("<I", data, 0x178, 0xAF)
+
+    with pytest.raises(
+        XboxResponseError,
+        match="certificate is shorter than required fields",
+    ):
+        parse_xbe_certificate(bytes(data))
+
+
+def test_xbe_invalid_utf16_title_is_rejected() -> None:
+    data = bytearray(make_xbe())
+    data[0x184:0x188] = bytes((0x00, 0xD8, 0x00, 0x00))
+
+    with pytest.raises(
+        XboxResponseError,
+        match="title name is not valid UTF-16LE",
+    ):
+        parse_xbe_certificate(bytes(data))
+
+
+def test_xbe_certificate_pointer_remains_authoritative() -> None:
+    data = bytearray(make_xbe())
+    struct.pack_into("<I", data, 0x110, 0x200)
+
+    certificate = parse_xbe_certificate(bytes(data))
+
+    assert certificate.title_name == "Halo"
+    assert certificate.title_id == "4D530004"
+
+
+def test_xbe_alternate_title_ids_are_preserved() -> None:
+    data = bytearray(make_xbe())
+    struct.pack_into("<I", data, 0x178 + 0x5C, 0x12345678)
+
+    certificate = parse_xbe_certificate(bytes(data))
+
+    assert certificate.alternate_title_ids == ("12345678",)
+
+
+def test_xbe_non_ascii_title_prefix_uses_hex() -> None:
+    certificate = parse_xbe_certificate(
+        make_xbe(title_id=0x01020003)
+    )
+
+    assert certificate.formatted_title_id == "0102-003"
