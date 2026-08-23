@@ -10,6 +10,7 @@ from .dolphin import (
     DolphinPlatformDetector,
 )
 from .nes import NesAdapter, NesPlatformDetector
+from .ps2 import Ps2PlatformDetector
 from .routing import CompositeNormalizer
 from .xbox import (
     XDVDFS_EXECUTABLE,
@@ -86,6 +87,7 @@ def build_default_detector(
     return CompositePlatformDetector(
         (
             NesPlatformDetector(),
+            Ps2PlatformDetector(),
             DolphinPlatformDetector(
                 executable=config.dolphin_executable,
             ),
