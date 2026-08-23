@@ -4,6 +4,7 @@ import pytest
 
 from rom_metadata_framework.nes import (
     NES_MAGIC,
+    NES_TRAINER_SIZE,
     NesAdapter,
     NesFormatError,
 )
@@ -379,3 +380,100 @@ def test_headered_nes_support_does_not_require_extension(
     )
 
     assert NesAdapter().supports(path)
+
+
+def test_supports_rejects_truncated_headered_nes(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "truncated.nes"
+
+    path.write_bytes(
+        make_header(
+            nes2=False,
+        )
+        + (b"P" * ((16 * 1024) - 1))
+        + (b"C" * (8 * 1024))
+    )
+
+    adapter = NesAdapter()
+
+    assert not adapter.supports(path)
+
+    with pytest.raises(NesFormatError):
+        adapter.identify(path)
+
+
+def test_supports_rejects_headered_nes_with_trailing_data(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "trailing.nes"
+
+    path.write_bytes(
+        make_header(
+            nes2=False,
+        )
+        + (b"P" * (16 * 1024))
+        + (b"C" * (8 * 1024))
+        + b"extra"
+    )
+
+    adapter = NesAdapter()
+
+    assert not adapter.supports(path)
+
+    with pytest.raises(NesFormatError):
+        adapter.identify(path)
+
+
+def test_supports_rejects_trainer_bearing_nes(
+    tmp_path: Path,
+) -> None:
+    header = bytearray(
+        make_header(
+            nes2=False,
+        )
+    )
+    header[6] |= 0x04
+
+    path = tmp_path / "trainer.nes"
+
+    path.write_bytes(
+        bytes(header)
+        + (b"T" * NES_TRAINER_SIZE)
+        + (b"P" * (16 * 1024))
+        + (b"C" * (8 * 1024))
+    )
+
+    adapter = NesAdapter()
+
+    assert not adapter.supports(path)
+
+    with pytest.raises(NesFormatError):
+        adapter.identify(path)
+
+
+def test_supports_accepts_exact_nes2_exponent_size_image(
+    tmp_path: Path,
+) -> None:
+    header = bytearray(16)
+    header[:4] = NES_MAGIC
+    header[4] = (14 << 2)
+    header[5] = 0
+    header[7] = 0x08
+    header[9] = 0x0F
+
+    path = tmp_path / "exponent.nes"
+
+    path.write_bytes(
+        bytes(header)
+        + (b"P" * (1 << 14))
+    )
+
+    adapter = NesAdapter()
+
+    assert adapter.supports(path)
+
+    result = adapter.identify(path)
+
+    assert result.representation == "nes2"
+    assert result.content.kind == "cartridge"
