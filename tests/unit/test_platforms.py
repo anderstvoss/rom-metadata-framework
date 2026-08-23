@@ -31,6 +31,8 @@ from rom_metadata_framework.platforms import (
         ("gbc", "game-boy-color"),
         ("ps1", "playstation"),
         ("ps2", "playstation-2"),
+        ("ps3", "playstation-3"),
+        ("sony-playstation-3", "playstation-3"),
         ("original-xbox", "xbox"),
         ("nds", "nintendo-ds"),
         ("nintendo_ds", "nintendo-ds"),

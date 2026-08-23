@@ -22,6 +22,13 @@ Run:
 uv run --frozen python examples/runtime_capabilities.py
 ~~~
 
+
+The standard detector composition includes NES, PlayStation 2,
+PlayStation 3, GameCube/Wii, and original Xbox detection. Structural
+inspection is enabled for PlayStation 2 and directly readable
+PlayStation 3 ISO9660 disc images. PS3 structural inspection preserves
+artifact-local metadata without creating normalized content.
+
 The standard runtime reports separate capabilities for NES, Dolphin, and
 original-Xbox normalization.
 

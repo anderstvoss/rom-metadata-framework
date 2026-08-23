@@ -340,3 +340,43 @@ See:
 
 - [Licensing Policy](LICENSING.md)
 - [Third-Party Provenance Policy](THIRD_PARTY_PROVENANCE.md)
+
+## PlayStation 3 readable-disc support
+
+The default runtime includes bounded PlayStation 3 disc detection and
+non-normalizing structural inspection for directly readable ISO9660 disc
+images.
+
+The PS3 path intentionally remains separate from normalized-content
+identity.
+
+Detection requires mutually consistent local disc evidence:
+
+- a valid ISO9660 primary volume descriptor;
+- root `PS3_DISC.SFB` with valid `.SFB` structure;
+- `PS3_GAME/PARAM.SFO` with valid PSF/SFO structure;
+- `PARAM.SFO` category `DG`;
+- a valid PS3 title ID;
+- agreement between the title ID recorded by `PS3_DISC.SFB` and
+  `PARAM.SFO`.
+
+The structural inspector may additionally preserve:
+
+- ISO volume identifier;
+- PS3 title ID;
+- locally encoded title;
+- application version;
+- game/version metadata;
+- required PS3 system version;
+- bootable state;
+- presence of `PS3_GAME/USRDIR/EBOOT.BIN`.
+
+This evidence is artifact-local. It does not cause provider lookup and it
+does not manufacture normalized content hashes.
+
+The standard PS3 implementation currently supports directly readable
+ISO9660 representations only. Encrypted/raw PS3 disc representations are
+not currently decoded or normalized by the framework.
+
+There is currently no PS3 normalizer and no PS3 normalization runtime
+capability.
