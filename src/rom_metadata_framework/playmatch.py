@@ -202,8 +202,10 @@ class PlaymatchResolver:
             with urlopen(request, timeout=self.timeout) as response:
                 raw_payload = response.read()
         except HTTPError as exc:
+            status_code = exc.code
+            exc.close()
             raise PlaymatchRequestError(
-                f"Playmatch returned HTTP {exc.code}"
+                f"Playmatch returned HTTP {status_code}"
             ) from exc
         except URLError as exc:
             raise PlaymatchRequestError(

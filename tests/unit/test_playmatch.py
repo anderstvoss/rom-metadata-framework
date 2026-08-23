@@ -1,7 +1,7 @@
 import json
 from io import BytesIO
 from typing import Self
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 
 import pytest
 
@@ -169,22 +169,29 @@ def test_playmatch_rejects_invalid_matched_response(
 def test_playmatch_reports_http_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    error = HTTPError(
+        "https://example.invalid",
+        429,
+        "Too Many Requests",
+        {},
+        None,
+    )
+
     def fake_urlopen(request, timeout):
-        raise HTTPError(
-            request.full_url,
-            429,
-            "Too Many Requests",
-            {},
-            None,
-        )
+        raise error
 
     monkeypatch.setattr(
         "rom_metadata_framework.playmatch.urlopen",
         fake_urlopen,
     )
 
-    with pytest.raises(PlaymatchRequestError):
+    with pytest.raises(
+        PlaymatchRequestError,
+        match="Playmatch returned HTTP 429",
+    ):
         PlaymatchResolver().resolve(identity())
+
+    assert error.closed
 
 
 def test_playmatch_rejects_duplicate_provider_mapping(
@@ -550,3 +557,267 @@ def test_playmatch_identify_lookup_uses_sha256(
     assert (
         result.catalogue_evidence[0].is_strong_content_match
     )
+
+
+def mock_playmatch_payload(
+    monkeypatch: pytest.MonkeyPatch,
+    payload: object,
+) -> None:
+    monkeypatch.setattr(
+        "rom_metadata_framework.playmatch.urlopen",
+        lambda request, timeout: FakeResponse(
+            json.dumps(payload).encode()
+        ),
+    )
+
+
+def matched_playmatch_payload() -> dict[str, object]:
+    return {
+        "gameMatchType": "SHA1",
+        "game": {
+            "id": "11111111-1111-1111-1111-111111111111",
+            "name": "Example Game",
+        },
+        "platform": {
+            "name": "Super Nintendo Entertainment System",
+        },
+        "externalMetadata": [],
+    }
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    (
+        ({"base_url": " / "}, "base URL must not be empty"),
+        ({"timeout": 0}, "timeout must be greater than zero"),
+        ({"timeout": -1}, "timeout must be greater than zero"),
+    ),
+)
+def test_playmatch_rejects_invalid_configuration(
+    kwargs: dict[str, object],
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        PlaymatchResolver(**kwargs)
+
+
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    (
+        ({}, "missing gameMatchType"),
+        ({"gameMatchType": ""}, "missing gameMatchType"),
+        (
+            {"gameMatchType": 123},
+            "missing gameMatchType",
+        ),
+        (
+            {
+                "gameMatchType": "SHA1",
+                "game": {"id": "id", "name": "   "},
+            },
+            "missing a valid name",
+        ),
+        (
+            {
+                "gameMatchType": "SHA1",
+                "game": {"id": "   ", "name": "Game"},
+            },
+            "missing a valid id",
+        ),
+        (
+            {
+                "gameMatchType": "SHA1",
+                "game": {"id": "id", "name": "Game"},
+            },
+            "missing platform name",
+        ),
+    ),
+)
+def test_playmatch_rejects_invalid_match_payloads(
+    monkeypatch: pytest.MonkeyPatch,
+    payload: dict[str, object],
+    message: str,
+) -> None:
+    mock_playmatch_payload(monkeypatch, payload)
+
+    with pytest.raises(PlaymatchResponseError, match=message):
+        PlaymatchResolver().identify(identity())
+
+
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    (
+        ([], "must be a JSON object"),
+        (
+            {
+                **matched_playmatch_payload(),
+                "platform": "snes",
+            },
+            "platform must be an object",
+        ),
+        (
+            {
+                **matched_playmatch_payload(),
+                "platform": {"name": 123},
+            },
+            "platform name must be a string",
+        ),
+        (
+            {
+                **matched_playmatch_payload(),
+                "externalMetadata": {},
+            },
+            "externalMetadata must be an array",
+        ),
+        (
+            {
+                **matched_playmatch_payload(),
+                "externalMetadata": ["invalid"],
+            },
+            "entry must be an object",
+        ),
+        (
+            {
+                **matched_playmatch_payload(),
+                "externalMetadata": [
+                    {"providerName": "", "providerId": "1"}
+                ],
+            },
+            "providerName is invalid",
+        ),
+        (
+            {
+                **matched_playmatch_payload(),
+                "externalMetadata": [
+                    {"providerName": "IGDB", "providerId": 1}
+                ],
+            },
+            "providerId is invalid",
+        ),
+    ),
+)
+def test_playmatch_rejects_invalid_response_structures(
+    monkeypatch: pytest.MonkeyPatch,
+    payload: object,
+    message: str,
+) -> None:
+    mock_playmatch_payload(monkeypatch, payload)
+
+    with pytest.raises(PlaymatchResponseError, match=message):
+        PlaymatchResolver().identify(identity())
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    (
+        ("gameFiles", {}, "gameFiles must be an array"),
+        (
+            "signatureGroup",
+            "invalid",
+            "signatureGroup must be an object",
+        ),
+        ("datFile", "invalid", "datFile must be an object"),
+        (
+            "datFileImport",
+            "invalid",
+            "datFileImport must be an object",
+        ),
+    ),
+)
+def test_playmatch_rejects_invalid_catalogue_structures(
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    value: object,
+    message: str,
+) -> None:
+    payload = matched_playmatch_payload()
+    payload[field] = value
+    mock_playmatch_payload(monkeypatch, payload)
+
+    with pytest.raises(PlaymatchResponseError, match=message):
+        PlaymatchResolver().identify(identity())
+
+
+def test_playmatch_rejects_nonobject_catalogue_file(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = matched_playmatch_payload()
+    payload["gameFiles"] = ["invalid"]
+    mock_playmatch_payload(monkeypatch, payload)
+
+    with pytest.raises(
+        PlaymatchResponseError,
+        match="gameFiles entry must be an object",
+    ):
+        PlaymatchResolver().identify(identity())
+
+
+def test_playmatch_ignores_external_metadata_without_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = matched_playmatch_payload()
+    payload["externalMetadata"] = [
+        {"providerName": "IGDB", "providerId": None}
+    ]
+    mock_playmatch_payload(monkeypatch, payload)
+
+    result = PlaymatchResolver().identify(identity())
+
+    assert result is not None
+    assert result.external_ids == {
+        "playmatch": "11111111-1111-1111-1111-111111111111"
+    }
+
+
+def test_playmatch_ignores_nonmatching_catalogue_hash(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = matched_playmatch_payload()
+    payload["gameFiles"] = [
+        {
+            "sha1": "0" * 40,
+            "status": "Verified",
+        }
+    ]
+    mock_playmatch_payload(monkeypatch, payload)
+
+    result = PlaymatchResolver().identify(identity())
+
+    assert result is not None
+    assert result.catalogue_evidence == ()
+
+
+def test_playmatch_reports_url_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_urlopen(request, timeout):
+        raise URLError("network unavailable")
+
+    monkeypatch.setattr(
+        "rom_metadata_framework.playmatch.urlopen",
+        fake_urlopen,
+    )
+
+    with pytest.raises(
+        PlaymatchRequestError,
+        match="request failed",
+    ):
+        PlaymatchResolver().identify(identity())
+
+
+def test_playmatch_reports_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_urlopen(request, timeout):
+        raise TimeoutError
+
+    monkeypatch.setattr(
+        "rom_metadata_framework.playmatch.urlopen",
+        fake_urlopen,
+    )
+
+    with pytest.raises(
+        PlaymatchRequestError,
+        match="request timed out",
+    ):
+        PlaymatchResolver().identify(identity())

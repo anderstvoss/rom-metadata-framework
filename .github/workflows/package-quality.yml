@@ -54,8 +54,14 @@ jobs:
           uv sync             --frozen             --extra dev             --python "${{ matrix.python-version }}"
 
       - name: Run unit tests
+        if: matrix.python-version != '3.14'
         run: |
           uv run             --frozen             --python "${{ matrix.python-version }}"             pytest -q
+
+      - name: Run unit tests with coverage
+        if: matrix.python-version == '3.14'
+        run: |
+          uv run             --frozen             --python "${{ matrix.python-version }}"             pytest -q             --cov=rom_metadata_framework             --cov-branch             --cov-report=term-missing:skip-covered
 
       - name: Run Ruff
         run: |
