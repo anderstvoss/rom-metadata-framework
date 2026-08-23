@@ -87,6 +87,14 @@ Resolvers may use local databases, downloadable datasets, or remote APIs.
 
 Multiple resolvers may support the same platform.
 
+Metadata provider results remain independent evidence. Provider registration
+order does not establish precedence, and metadata reconciliation does not select
+preferred values. Consumers requiring a single metadata value must define an
+explicit consumer-specific policy.
+
+See `docs/metadata-selection-policy.md` for the framework-wide non-selection
+contract.
+
 ## Licensing boundary
 
 The core framework and each adapter are separate implementation boundaries for
