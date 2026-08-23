@@ -1,16 +1,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Protocol
 
 from .capability import (
     RuntimeCapability,
     RuntimeCapabilityStatus,
 )
-from .defaults import build_default_normalizer
-from .dolphin import DOLPHIN_EXECUTABLE
-from .xbox import XDVDFS_EXECUTABLE
+from .defaults import (
+    DEFAULT_RUNTIME_CONFIG,
+    DefaultRuntimeConfig,
+    build_default_normalizer,
+)
 
 
 class CapabilityReporter(Protocol):
@@ -87,21 +88,10 @@ def report_runtime(
 
 
 def build_default_runtime_report(
-    *,
-    allow_headerless_nes: bool = False,
-    dolphin_executable: str = DOLPHIN_EXECUTABLE,
-    dolphin_temporary_directory: Path | None = None,
-    xbox_executable: str = XDVDFS_EXECUTABLE,
-    xbox_temporary_directory: Path | None = None,
+    config: DefaultRuntimeConfig = DEFAULT_RUNTIME_CONFIG,
 ) -> RuntimeReport:
     """Report runtime state for the standard normalizer configuration."""
 
-    normalizer = build_default_normalizer(
-        allow_headerless_nes=allow_headerless_nes,
-        dolphin_executable=dolphin_executable,
-        dolphin_temporary_directory=dolphin_temporary_directory,
-        xbox_executable=xbox_executable,
-        xbox_temporary_directory=xbox_temporary_directory,
+    return report_runtime(
+        build_default_normalizer(config)
     )
-
-    return report_runtime(normalizer)
