@@ -27,8 +27,25 @@ metadata sources.
 - Prevent ROM images, credentials, private infrastructure details, and local
   development data from entering public repository history.
 
+## Runtime backends
+
+The framework includes built-in NES normalization and optional external-tool
+normalizers for GameCube/Wii and original-Xbox disc images.
+
+The standard runtime expects `dolphin-tool` for GameCube/Wii normalization and
+`xdvdfs` for original-Xbox XDVDFS normalization when those capabilities are
+used. Missing optional backends are reported explicitly and do not prevent an
+independent adapter from handling a supported source.
+
+See [Runtime Backends](docs/runtime-backends.md) for executable discovery,
+capability reporting, probe semantics, temporary storage, and the exact backend
+operations used by the framework.
+
 ## Status
 
-Repository bootstrap and public-development sanitation are in progress.
+The framework currently provides physical identity hashing, platform evidence,
+canonical-content normalization, release reconciliation, local and provider
+metadata evidence, verification, naming policy, runtime capability reporting,
+and an explicit consumer-facing Python API.
 
-No emulator-derived implementation code is currently included.
+Platform and format support remains intentionally modular and incomplete.
