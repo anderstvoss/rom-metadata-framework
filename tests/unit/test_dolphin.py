@@ -579,3 +579,50 @@ def test_dolphin_probe_valid_header_is_supported(
     assert probe.details["game_id"] == "GALE01"
     assert probe.details["revision"] == "2"
     assert probe.supported
+
+
+def test_dolphin_runtime_capability_missing_backend_is_unavailable() -> None:
+    from rom_metadata_framework.capability import RuntimeCapabilityStatus
+
+    adapter = DolphinAdapter(
+        executable="/definitely/missing/dolphin-tool",
+    )
+
+    capability = adapter.runtime_capability()
+
+    assert capability.name == "dolphin-normalization"
+    assert capability.backend == "dolphin"
+    assert capability.status is RuntimeCapabilityStatus.UNAVAILABLE
+    assert not capability.ready
+
+
+def test_dolphin_runtime_capability_uses_header_health_probe(
+    monkeypatch,
+) -> None:
+    from pathlib import Path
+
+    from rom_metadata_framework.backends import BackendStatus
+    from rom_metadata_framework.capability import RuntimeCapabilityStatus
+
+    observed = {}
+
+    def fake_probe_backend(spec):
+        observed["args"] = spec.version_args
+        return BackendStatus(
+            name=spec.name,
+            available=True,
+            executable=Path("/usr/bin/dolphin-tool"),
+            version="Usage: header [options]...",
+        )
+
+    monkeypatch.setattr(
+        "rom_metadata_framework.dolphin.probe_backend",
+        fake_probe_backend,
+    )
+
+    capability = DolphinAdapter().runtime_capability()
+
+    assert observed["args"] == ("header", "-h")
+    assert capability.status is RuntimeCapabilityStatus.READY
+    assert capability.ready
+    assert capability.version is None

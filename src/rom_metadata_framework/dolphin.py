@@ -10,8 +10,14 @@ from types import MappingProxyType
 from .backends import (
     BackendError,
     BackendSpec,
+    BackendStatus,
     BackendUnavailableError,
+    probe_backend,
     run_backend,
+)
+from .capability import (
+    RuntimeCapability,
+    capability_from_backend_status,
 )
 from .content import NormalizedContentIdentity
 from .hashing import hash_file
@@ -150,6 +156,27 @@ class DolphinAdapter:
             else None
         )
 
+    def runtime_capability(self) -> RuntimeCapability:
+        # Probe the Dolphin subcommand required by this adapter.
+        health_spec = BackendSpec(
+            name=self.backend.name,
+            executable=self.backend.executable,
+            version_args=("header", "-h"),
+        )
+
+        status = probe_backend(health_spec)
+
+        if status.available and status.error is None:
+            status = BackendStatus(
+                name=status.name,
+                available=True,
+                executable=status.executable,
+            )
+
+        return capability_from_backend_status(
+            "dolphin-normalization",
+            status,
+        )
     def probe(self, path: Path) -> NormalizerProbe:
         """Classify Dolphin support without hiding backend failures."""
 

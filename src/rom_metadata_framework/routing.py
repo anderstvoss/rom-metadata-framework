@@ -4,6 +4,10 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Protocol
 
+from .capability import (
+    RuntimeCapability,
+    RuntimeCapabilityStatus,
+)
 from .content import NormalizedContentIdentity
 from .normalization import (
     NormalizerProbe,
@@ -124,6 +128,36 @@ class CompositeNormalizer:
             raise ValueError(
                 "normalizer names must be unique"
             )
+
+    def runtime_capabilities(
+        self,
+    ) -> tuple[RuntimeCapability, ...]:
+        """Report constituent runtime capabilities in registration order."""
+
+        capabilities = []
+
+        for normalizer in self.normalizers:
+            capability_method = getattr(
+                normalizer,
+                "runtime_capability",
+                None,
+            )
+
+            if callable(capability_method):
+                capability = capability_method()
+            else:
+                capability = RuntimeCapability(
+                    name=f"{normalizer.name}-normalization",
+                    status=RuntimeCapabilityStatus.UNKNOWN,
+                    reason=(
+                        "normalizer does not expose runtime "
+                        "capability information"
+                    ),
+                )
+
+            capabilities.append(capability)
+
+        return tuple(capabilities)
 
     def probe_normalizers(
         self,
