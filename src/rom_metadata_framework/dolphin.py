@@ -22,6 +22,12 @@ from .capability import (
 from .content import NormalizedContentIdentity
 from .hashing import hash_file
 from .identity import HashSet
+from .local_metadata import (
+    LocalContentMetadata,
+    LocalIdentifier,
+    LocalMetadataProvenance,
+    LocalMetadataValue,
+)
 from .normalization import (
     NormalizerProbe,
     NormalizerProbeStatus,
@@ -60,6 +66,10 @@ class DolphinDiscIdentity:
     container_metadata: Mapping[str, str] = field(
         default_factory=dict,
     )
+
+    local_metadata: LocalContentMetadata = field(
+        default_factory=LocalContentMetadata,
+    )
     physical_representation: RepresentationIdentity = field(
         init=False,
     )
@@ -68,9 +78,7 @@ class DolphinDiscIdentity:
         platform = self.platform.strip().lower()
 
         if platform not in _SUPPORTED_PLATFORMS:
-            raise ValueError(
-                f"unsupported Dolphin platform {platform!r}"
-            )
+            raise ValueError(f"unsupported Dolphin platform {platform!r}")
 
         object.__setattr__(self, "platform", platform)
 
@@ -114,9 +122,7 @@ class DolphinDiscIdentity:
         }
 
         if any(not key for key in metadata):
-            raise ValueError(
-                "container metadata keys must not be empty"
-            )
+            raise ValueError("container metadata keys must not be empty")
 
         object.__setattr__(
             self,
@@ -151,9 +157,7 @@ class DolphinAdapter:
             executable=executable,
         )
         self.temporary_directory = (
-            Path(temporary_directory)
-            if temporary_directory is not None
-            else None
+            Path(temporary_directory) if temporary_directory is not None else None
         )
 
     def runtime_capability(self) -> RuntimeCapability:
@@ -177,6 +181,7 @@ class DolphinAdapter:
             "dolphin-normalization",
             status,
         )
+
     def probe(self, path: Path) -> NormalizerProbe:
         """Classify Dolphin support without hiding backend failures."""
 
@@ -194,9 +199,7 @@ class DolphinAdapter:
         except BackendUnavailableError as exc:
             return NormalizerProbe(
                 normalizer=self.name,
-                status=(
-                    NormalizerProbeStatus.BACKEND_UNAVAILABLE
-                ),
+                status=(NormalizerProbeStatus.BACKEND_UNAVAILABLE),
                 reason=str(exc),
             )
         except BackendError as exc:
@@ -232,9 +235,7 @@ class DolphinAdapter:
                 header,
                 "game_id",
             )
-            revision = self._required_revision(
-                header
-            )
+            revision = self._required_revision(header)
         except DolphinResponseError as exc:
             return NormalizerProbe(
                 normalizer=self.name,
@@ -279,50 +280,61 @@ class DolphinAdapter:
         )
 
         if rchash is not None:
-            specialized_identifiers[
-                RETROACHIEVEMENTS_NAMESPACE
-            ] = rchash
+            specialized_identifiers[RETROACHIEVEMENTS_NAMESPACE] = rchash
 
-        title_id = header.get("title_id")
+        game_id = self._required_string(
+            header,
+            "game_id",
+        )
+        revision = self._required_revision(header)
+        region = self._optional_string(
+            header,
+            "region",
+        )
+        country = self._optional_string(
+            header,
+            "country",
+        )
+        internal_name = self._optional_string(
+            header,
+            "internal_name",
+        )
+
+        raw_title_id = header.get("title_id")
+        title_id = str(raw_title_id) if raw_title_id is not None else None
+
+        specialized_identifiers["nintendo-game-id"] = game_id
+
+        if title_id is not None:
+            specialized_identifiers["wii-title-id"] = title_id
+
+        local_metadata = self._local_metadata(
+            platform=platform,
+            game_id=game_id,
+            revision=revision,
+            region=region,
+            country=country,
+            internal_name=internal_name,
+            title_id=title_id,
+        )
 
         return DolphinDiscIdentity(
             platform=platform,
-            format=path.suffix.lower().lstrip(".")
-            or "unknown",
-            game_id=self._required_string(
-                header,
-                "game_id",
-            ),
-            revision=self._required_revision(header),
-            region=self._optional_string(
-                header,
-                "region",
-            ),
-            country=self._optional_string(
-                header,
-                "country",
-            ),
-            internal_name=self._optional_string(
-                header,
-                "internal_name",
-            ),
-            title_id=(
-                str(title_id)
-                if title_id is not None
-                else None
-            ),
+            format=path.suffix.lower().lstrip(".") or "unknown",
+            game_id=game_id,
+            revision=revision,
+            region=region,
+            country=country,
+            internal_name=internal_name,
+            title_id=title_id,
+            local_metadata=local_metadata,
             content=NormalizedContentIdentity(
                 kind="disc",
                 hashes=hashes,
                 specialized_identifiers=specialized_identifiers,
                 metadata={
-                    "game_id": self._required_string(
-                        header,
-                        "game_id",
-                    ),
-                    "revision": str(
-                        self._required_revision(header)
-                    ),
+                    "game_id": game_id,
+                    "revision": str(revision),
                 },
             ),
             container_metadata={
@@ -334,6 +346,98 @@ class DolphinAdapter:
                 )
                 if header.get(key) is not None
             },
+        )
+
+    @staticmethod
+    def _local_metadata(
+        *,
+        platform: str,
+        game_id: str,
+        revision: int,
+        region: str | None,
+        country: str | None,
+        internal_name: str | None,
+        title_id: str | None,
+    ) -> LocalContentMetadata:
+        provenance = LocalMetadataProvenance(
+            source="dolphin",
+            method="disc-header",
+        )
+
+        identifiers = [
+            LocalIdentifier(
+                namespace="nintendo-game-id",
+                value=game_id,
+                provenance=provenance,
+            ),
+        ]
+
+        if title_id is not None:
+            identifiers.append(
+                LocalIdentifier(
+                    namespace="wii-title-id",
+                    value=title_id,
+                    provenance=provenance,
+                )
+            )
+
+        native_metadata = {
+            "game_id": game_id,
+            "revision": str(revision),
+        }
+
+        if region is not None:
+            native_metadata["region"] = region
+
+        if country is not None:
+            native_metadata["country"] = country
+
+        if internal_name is not None:
+            native_metadata["internal_name"] = internal_name
+
+        if title_id is not None:
+            native_metadata["title_id"] = title_id
+
+        return LocalContentMetadata(
+            platform=platform,
+            titles=(
+                (
+                    LocalMetadataValue(
+                        value=internal_name,
+                        provenance=provenance,
+                    ),
+                )
+                if internal_name is not None
+                else ()
+            ),
+            identifiers=tuple(identifiers),
+            release_revisions=(
+                LocalMetadataValue(
+                    value=str(revision),
+                    provenance=provenance,
+                ),
+            ),
+            regions=(
+                (
+                    LocalMetadataValue(
+                        value=region,
+                        provenance=provenance,
+                    ),
+                )
+                if region is not None
+                else ()
+            ),
+            countries=(
+                (
+                    LocalMetadataValue(
+                        value=country,
+                        provenance=provenance,
+                    ),
+                )
+                if country is not None
+                else ()
+            ),
+            native_metadata=native_metadata,
         )
 
     def _normalized_hashes(self, path: Path) -> HashSet:
@@ -371,8 +475,7 @@ class DolphinAdapter:
 
             if not output.is_file():
                 raise DolphinResponseError(
-                    "dolphin-tool conversion did not produce "
-                    "a canonical ISO"
+                    "dolphin-tool conversion did not produce a canonical ISO"
                 )
 
             return hash_file(output)
@@ -397,8 +500,7 @@ class DolphinAdapter:
 
         if not isinstance(payload, dict):
             raise DolphinResponseError(
-                "dolphin-tool header response must be "
-                "a JSON object"
+                "dolphin-tool header response must be a JSON object"
             )
 
         return payload
@@ -434,30 +536,21 @@ class DolphinAdapter:
             expected_length = expected_lengths[algorithm]
         except KeyError as exc:
             raise ValueError(
-                f"unsupported Dolphin hash algorithm "
-                f"{algorithm!r}"
+                f"unsupported Dolphin hash algorithm {algorithm!r}"
             ) from exc
 
-        valid = (
-            len(value) == expected_length
-            and all(
-                character in "0123456789abcdef"
-                for character in value
-            )
+        valid = len(value) == expected_length and all(
+            character in "0123456789abcdef" for character in value
         )
 
         if valid:
             return value
 
-        if allow_unsupported and (
-            value == ""
-            or value == "0"
-        ):
+        if allow_unsupported and (value == "" or value == "0"):
             return None
 
         raise DolphinResponseError(
-            f"dolphin-tool returned an invalid "
-            f"{algorithm} value"
+            f"dolphin-tool returned an invalid {algorithm} value"
         )
 
     @staticmethod
@@ -479,10 +572,7 @@ class DolphinAdapter:
         value = header.get(field_name)
 
         if not isinstance(value, str) or not value.strip():
-            raise DolphinResponseError(
-                f"dolphin-tool header is missing "
-                f"{field_name}"
-            )
+            raise DolphinResponseError(f"dolphin-tool header is missing {field_name}")
 
         return value.strip()
 
@@ -498,8 +588,7 @@ class DolphinAdapter:
 
         if not isinstance(value, str):
             raise DolphinResponseError(
-                f"dolphin-tool header field "
-                f"{field_name} must be a string"
+                f"dolphin-tool header field {field_name} must be a string"
             )
 
         return value.strip() or None
@@ -510,14 +599,9 @@ class DolphinAdapter:
     ) -> int:
         value = header.get("revision")
 
-        if (
-            isinstance(value, bool)
-            or not isinstance(value, int)
-            or value < 0
-        ):
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
             raise DolphinResponseError(
-                "dolphin-tool header contains an "
-                "invalid revision"
+                "dolphin-tool header contains an invalid revision"
             )
 
         return value
@@ -554,9 +638,7 @@ class DolphinPlatformDetector:
 
         try:
             header = self.adapter._header(path)
-            platform = self.adapter._platform_from_header(
-                header
-            )
+            platform = self.adapter._platform_from_header(header)
         except (
             BackendError,
             DolphinResponseError,

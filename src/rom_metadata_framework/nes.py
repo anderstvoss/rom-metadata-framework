@@ -13,6 +13,9 @@ from .capability import (
 )
 from .content import NormalizedContentIdentity
 from .identity import HashSet
+from .local_metadata import (
+    LocalContentMetadata,
+)
 from .normalization import (
     NormalizerProbe,
     NormalizerProbeStatus,
@@ -37,6 +40,9 @@ class NesContentIdentity:
     header_metadata: Mapping[str, str] = field(
         default_factory=dict,
     )
+    local_metadata: LocalContentMetadata = field(
+        default_factory=LocalContentMetadata,
+    )
     physical_representation: RepresentationIdentity = field(
         init=False,
     )
@@ -49,10 +55,7 @@ class NesContentIdentity:
             "ines",
             "headerless",
         }:
-            raise ValueError(
-                f"unsupported NES representation "
-                f"{representation!r}"
-            )
+            raise ValueError(f"unsupported NES representation {representation!r}")
 
         object.__setattr__(
             self,
@@ -66,9 +69,7 @@ class NesContentIdentity:
         }
 
         if any(not key for key in metadata):
-            raise ValueError(
-                "NES header metadata keys must not be empty"
-            )
+            raise ValueError("NES header metadata keys must not be empty")
 
         object.__setattr__(
             self,
@@ -122,10 +123,7 @@ class NesAdapter:
             header = handle.read(NES_HEADER_SIZE)
 
         if header[:4] != NES_MAGIC:
-            if (
-                self.allow_headerless
-                and path.suffix.lower() == ".nes"
-            ):
+            if self.allow_headerless and path.suffix.lower() == ".nes":
                 return NormalizerProbe(
                     normalizer=self.name,
                     status=NormalizerProbeStatus.SUPPORTED,
@@ -155,20 +153,13 @@ class NesAdapter:
         flags7 = header[7]
 
         is_nes2 = (flags7 & 0x0C) == 0x08
-        representation = (
-            "nes2"
-            if is_nes2
-            else "ines"
-        )
+        representation = "nes2" if is_nes2 else "ines"
 
         if flags6 & 0x04:
             return NormalizerProbe(
                 normalizer=self.name,
                 status=NormalizerProbeStatus.UNSAFE,
-                reason=(
-                    "trainer-bearing NES images are not "
-                    "normalized safely"
-                ),
+                reason=("trainer-bearing NES images are not normalized safely"),
                 details={
                     "representation": representation,
                     "trainer": "true",
@@ -190,11 +181,7 @@ class NesAdapter:
             prg_size = header[4] * 16 * 1024
             chr_size = header[5] * 8 * 1024
 
-        expected_size = (
-            NES_HEADER_SIZE
-            + prg_size
-            + chr_size
-        )
+        expected_size = NES_HEADER_SIZE + prg_size + chr_size
         actual_size = path.stat().st_size
 
         details = {
@@ -215,10 +202,7 @@ class NesAdapter:
             return NormalizerProbe(
                 normalizer=self.name,
                 status=NormalizerProbeStatus.UNSAFE,
-                reason=(
-                    "NES image contains trailing or "
-                    "miscellaneous data"
-                ),
+                reason=("NES image contains trailing or miscellaneous data"),
                 details=details,
             )
 
@@ -239,9 +223,7 @@ class NesAdapter:
         path = Path(path)
 
         if not path.is_file():
-            raise NesFormatError(
-                f"NES image does not exist: {path}"
-            )
+            raise NesFormatError(f"NES image does not exist: {path}")
 
         with path.open("rb") as handle:
             header = handle.read(NES_HEADER_SIZE)
@@ -249,8 +231,7 @@ class NesAdapter:
         if header[:4] != NES_MAGIC:
             if not self.allow_headerless:
                 raise NesFormatError(
-                    "headerless NES image requires "
-                    "allow_headerless=True"
+                    "headerless NES image requires allow_headerless=True"
                 )
 
             hashes = _hash_region(
@@ -268,22 +249,22 @@ class NesAdapter:
                         "normalization": "complete-file",
                     },
                 ),
+                local_metadata=LocalContentMetadata(
+                    platform="nes",
+                    media={
+                        "representation": "headerless",
+                    },
+                ),
             )
 
         if len(header) != NES_HEADER_SIZE:
-            raise NesFormatError(
-                "truncated NES header"
-            )
+            raise NesFormatError("truncated NES header")
 
         flags6 = header[6]
         flags7 = header[7]
 
         is_nes2 = (flags7 & 0x0C) == 0x08
-        representation = (
-            "nes2"
-            if is_nes2
-            else "ines"
-        )
+        representation = "nes2" if is_nes2 else "ines"
 
         has_trainer = bool(flags6 & 0x04)
 
@@ -306,27 +287,17 @@ class NesAdapter:
                 unit_size=8 * 1024,
             )
 
-            mapper = (
-                (flags6 >> 4)
-                | (flags7 & 0xF0)
-                | ((header[8] & 0x0F) << 8)
-            )
+            mapper = (flags6 >> 4) | (flags7 & 0xF0) | ((header[8] & 0x0F) << 8)
             submapper = (header[8] >> 4) & 0x0F
         else:
             prg_size = header[4] * 16 * 1024
             chr_size = header[5] * 8 * 1024
 
-            mapper = (
-                (flags6 >> 4)
-                | (flags7 & 0xF0)
-            )
+            mapper = (flags6 >> 4) | (flags7 & 0xF0)
             submapper = None
 
         content_size = prg_size + chr_size
-        expected_size = (
-            NES_HEADER_SIZE
-            + content_size
-        )
+        expected_size = NES_HEADER_SIZE + content_size
         actual_size = path.stat().st_size
 
         if actual_size < expected_size:
@@ -376,8 +347,127 @@ class NesAdapter:
                 hashes=hashes,
                 metadata=metadata,
             ),
+            local_metadata=_nes_local_metadata(
+                header=header,
+                representation=representation,
+                mapper=mapper,
+                submapper=submapper,
+                prg_size=prg_size,
+                chr_size=chr_size,
+                flags6=flags6,
+                flags7=flags7,
+            ),
             header_metadata=header_metadata,
         )
+
+
+_NES_TIMING_MODES = {
+    0: "ntsc",
+    1: "pal",
+    2: "multi-region",
+    3: "dendy",
+}
+
+_NES_CONSOLE_TYPES = {
+    0: "regular",
+    1: "vs-system",
+    2: "playchoice-10",
+    3: "extended",
+}
+
+
+def _nes2_ram_size(shift: int) -> int:
+    if shift == 0:
+        return 0
+
+    return 64 << shift
+
+
+def _nes_local_metadata(
+    *,
+    header: bytes,
+    representation: str,
+    mapper: int,
+    submapper: int | None,
+    prg_size: int,
+    chr_size: int,
+    flags6: int,
+    flags7: int,
+) -> LocalContentMetadata:
+    four_screen = bool(flags6 & 0x08)
+    battery = bool(flags6 & 0x02)
+
+    if four_screen:
+        nametable_layout = "four-screen"
+    elif flags6 & 0x01:
+        nametable_layout = "horizontal"
+    else:
+        nametable_layout = "vertical"
+
+    hardware = {
+        "mapper": str(mapper),
+        "prg_rom_size": str(prg_size),
+        "chr_rom_size": str(chr_size),
+        "nametable_layout": nametable_layout,
+        "battery_or_nvram": str(battery).lower(),
+        "trainer": "false",
+    }
+
+    native_metadata = {
+        "flags6": f"{flags6:02x}",
+        "flags7": f"{flags7:02x}",
+    }
+
+    if submapper is not None:
+        hardware["submapper"] = str(submapper)
+
+    if representation == "nes2":
+        prg_ram_shift = header[10] & 0x0F
+        prg_nvram_shift = (header[10] >> 4) & 0x0F
+        chr_ram_shift = header[11] & 0x0F
+        chr_nvram_shift = (header[11] >> 4) & 0x0F
+
+        timing_code = header[12] & 0x03
+        console_code = flags7 & 0x03
+
+        hardware.update(
+            {
+                "prg_ram_size": str(_nes2_ram_size(prg_ram_shift)),
+                "prg_nvram_size": str(_nes2_ram_size(prg_nvram_shift)),
+                "chr_ram_size": str(_nes2_ram_size(chr_ram_shift)),
+                "chr_nvram_size": str(_nes2_ram_size(chr_nvram_shift)),
+                "timing_mode": (_NES_TIMING_MODES[timing_code]),
+                "console_type": (_NES_CONSOLE_TYPES[console_code]),
+                "misc_rom_count": str(header[14] & 0x03),
+                "default_expansion_device": str(header[15] & 0x3F),
+            }
+        )
+
+        native_metadata.update(
+            {
+                "byte10": f"{header[10]:02x}",
+                "byte11": f"{header[11]:02x}",
+                "byte12": f"{header[12]:02x}",
+                "byte13": f"{header[13]:02x}",
+                "byte14": f"{header[14]:02x}",
+                "byte15": f"{header[15]:02x}",
+            }
+        )
+
+        if console_code == 1:
+            hardware["vs_ppu_type"] = str(header[13] & 0x0F)
+            hardware["vs_hardware_type"] = str((header[13] >> 4) & 0x0F)
+        elif console_code == 3:
+            hardware["extended_console_type"] = str(header[13] & 0x0F)
+
+    return LocalContentMetadata(
+        platform="nes",
+        hardware=hardware,
+        media={
+            "representation": representation,
+        },
+        native_metadata=native_metadata,
+    )
 
 
 def _nes2_rom_size(
@@ -389,10 +479,7 @@ def _nes2_rom_size(
     """Decode one NES 2.0 PRG-ROM or CHR-ROM size field."""
 
     if msb_nibble != 0x0F:
-        units = (
-            (msb_nibble << 8)
-            | lsb
-        )
+        units = (msb_nibble << 8) | lsb
         return units * unit_size
 
     exponent = lsb >> 2
@@ -420,14 +507,11 @@ def _hash_region(
         handle.seek(offset)
 
         while remaining:
-            chunk = handle.read(
-                min(1024 * 1024, remaining)
-            )
+            chunk = handle.read(min(1024 * 1024, remaining))
 
             if not chunk:
                 raise NesFormatError(
-                    "unexpected end of file while "
-                    "normalizing NES content"
+                    "unexpected end of file while normalizing NES content"
                 )
 
             remaining -= len(chunk)
@@ -437,7 +521,7 @@ def _hash_region(
             sha256.update(chunk)
 
     return HashSet(
-        crc32=f"{crc & 0xffffffff:08x}",
+        crc32=f"{crc & 0xFFFFFFFF:08x}",
         md5=md5.hexdigest(),
         sha1=sha1.hexdigest(),
         sha256=sha256.hexdigest(),
@@ -474,11 +558,7 @@ class NesPlatformDetector:
 
         flags7 = header[7]
 
-        representation = (
-            "nes2"
-            if (flags7 & 0x0C) == 0x08
-            else "ines"
-        )
+        representation = "nes2" if (flags7 & 0x0C) == 0x08 else "ines"
 
         evidence = PlatformEvidence(
             source="nes-header",
