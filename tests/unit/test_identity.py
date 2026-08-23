@@ -12,11 +12,19 @@ def test_hashes_are_normalized_to_lowercase() -> None:
         crc32="ABCDEF12",
         md5="ABCDEF0123456789ABCDEF0123456789",
         sha1="ABCDEF0123456789ABCDEF0123456789ABCDEF01",
+        sha256=(
+            "ABCDEF0123456789ABCDEF0123456789"
+            "ABCDEF0123456789ABCDEF0123456789"
+        ),
     )
 
     assert hashes.crc32 == "abcdef12"
     assert hashes.md5 == "abcdef0123456789abcdef0123456789"
     assert hashes.sha1 == "abcdef0123456789abcdef0123456789abcdef01"
+    assert hashes.sha256 == (
+        "abcdef0123456789abcdef0123456789"
+        "abcdef0123456789abcdef0123456789"
+    )
 
 
 @pytest.mark.parametrize(
@@ -25,6 +33,8 @@ def test_hashes_are_normalized_to_lowercase() -> None:
         ("crc32", "1234"),
         ("md5", "not-a-valid-md5"),
         ("sha1", "g" * 40),
+        ("sha256", "f" * 63),
+        ("sha256", "g" * 64),
     ],
 )
 def test_invalid_hashes_are_rejected(field_name: str, value: str) -> None:
@@ -153,3 +163,17 @@ def test_identity_rejects_negative_file_size() -> None:
 def test_identity_rejects_non_integer_file_size() -> None:
     with pytest.raises(TypeError):
         RomIdentity(file_size="123")  # type: ignore[arg-type]
+
+
+def test_generic_hasher_includes_sha256(tmp_path) -> None:
+    import hashlib
+
+    from rom_metadata_framework.hashing import hash_file
+
+    payload = b"rom-metadata-framework sha256 test\n"
+    path = tmp_path / "sample.bin"
+    path.write_bytes(payload)
+
+    hashes = hash_file(path)
+
+    assert hashes.sha256 == hashlib.sha256(payload).hexdigest()

@@ -272,6 +272,7 @@ def _hash_region(
     crc = 0
     md5 = hashlib.md5()
     sha1 = hashlib.sha1()
+    sha256 = hashlib.sha256()
 
     remaining = length
 
@@ -293,11 +294,13 @@ def _hash_region(
             crc = zlib.crc32(chunk, crc)
             md5.update(chunk)
             sha1.update(chunk)
+            sha256.update(chunk)
 
     return HashSet(
         crc32=f"{crc & 0xffffffff:08x}",
         md5=md5.hexdigest(),
         sha1=sha1.hexdigest(),
+        sha256=sha256.hexdigest(),
     )
 
 

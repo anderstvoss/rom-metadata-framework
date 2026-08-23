@@ -482,3 +482,71 @@ def test_playmatch_identify_lookup_accepts_normalized_hashes(
         == "Super Mario Bros. 3 (USA)"
     )
     assert result.evidence[0].method == "SHA1"
+
+
+def test_playmatch_identify_lookup_uses_sha256(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from rom_metadata_framework.lookup import LookupIdentity
+
+    sha256 = "a" * 64
+
+    payload = {
+        "gameMatchType": "SHA256",
+        "game": {
+            "id": "11111111-1111-1111-1111-111111111111",
+            "name": "Example Game (USA)",
+        },
+        "platform": {
+            "id": "22222222-2222-2222-2222-222222222222",
+            "name": "Nintendo Entertainment System",
+        },
+        "externalMetadata": [],
+        "gameFiles": [
+            {
+                "sha256": sha256,
+                "datFile": {
+                    "name": "Nintendo - NES",
+                    "source": "No-Intro",
+                    "version": "20260822",
+                },
+                "status": "Verified",
+                "isCurrent": True,
+            },
+        ],
+    }
+
+    def fake_urlopen(request, timeout):
+        assert timeout == 10.0
+        assert f"sha256={sha256}" in request.full_url
+
+        return FakeResponse(
+            json.dumps(payload).encode()
+        )
+
+    monkeypatch.setattr(
+        "rom_metadata_framework.playmatch.urlopen",
+        fake_urlopen,
+    )
+
+    result = PlaymatchResolver().identify_lookup(
+        LookupIdentity(
+            file_name="example.nes",
+            file_size=1234,
+            hashes=HashSet(
+                sha256=sha256,
+            ),
+        )
+    )
+
+    assert result is not None
+    assert result.evidence[0].method == "SHA256"
+
+    assert result.catalogue_evidence
+    assert (
+        result.catalogue_evidence[0].match_method
+        == "SHA256"
+    )
+    assert (
+        result.catalogue_evidence[0].is_strong_content_match
+    )

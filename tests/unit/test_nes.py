@@ -324,3 +324,24 @@ def test_nes_platform_detector_does_not_guess_headerless(
 
     assert detection.best is None
     assert detection.candidates == ()
+
+
+def test_nes_normalized_content_includes_sha256(tmp_path: Path) -> None:
+    import hashlib
+
+    payload = (b"\x12\x34\x56\x78" * (16 * 1024 // 4))
+
+    header = bytearray(16)
+    header[:4] = b"NES\x1a"
+    header[4] = 1
+    header[5] = 0
+
+    path = tmp_path / "sha256-test.nes"
+    path.write_bytes(bytes(header) + payload)
+
+    result = NesAdapter().identify(path)
+
+    assert (
+        result.content.hashes.sha256
+        == hashlib.sha256(payload).hexdigest()
+    )

@@ -172,6 +172,9 @@ class PlaymatchResolver:
             "fileSize": lookup.file_size,
         }
 
+        if lookup.hashes.sha256 is not None:
+            query["sha256"] = lookup.hashes.sha256
+
         if lookup.hashes.sha1 is not None:
             query["sha1"] = lookup.hashes.sha1
 

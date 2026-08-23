@@ -4,10 +4,12 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from types import MappingProxyType
 
 from .backends import BackendSpec, run_backend
 from .content import NormalizedContentIdentity
+from .hashing import hash_file
 from .identity import HashSet
 
 DOLPHIN_EXECUTABLE = "dolphin-tool"
@@ -113,10 +115,16 @@ class DolphinAdapter:
         self,
         *,
         executable: str = DOLPHIN_EXECUTABLE,
+        temporary_directory: Path | None = None,
     ) -> None:
         self.backend = BackendSpec(
             name=self.name,
             executable=executable,
+        )
+        self.temporary_directory = (
+            Path(temporary_directory)
+            if temporary_directory is not None
+            else None
         )
 
     def supports(self, path: Path) -> bool:
@@ -132,11 +140,7 @@ class DolphinAdapter:
         header = self._header(path)
 
         platform = self._platform_from_header(header)
-        hashes = HashSet(
-            crc32=self._hash(path, "crc32"),
-            md5=self._hash(path, "md5"),
-            sha1=self._hash(path, "sha1"),
-        )
+        hashes = self._normalized_hashes(path)
 
         specialized_identifiers: dict[str, str] = {}
 
@@ -203,6 +207,47 @@ class DolphinAdapter:
                 if header.get(key) is not None
             },
         )
+
+    def _normalized_hashes(self, path: Path) -> HashSet:
+        """Hash Dolphin's reconstructed canonical plain-disc bytes."""
+
+        if (
+            self.temporary_directory is not None
+            and not self.temporary_directory.is_dir()
+        ):
+            raise FileNotFoundError(self.temporary_directory)
+
+        with TemporaryDirectory(
+            prefix="rom-metadata-framework-dolphin-",
+            dir=self.temporary_directory,
+        ) as directory:
+            workdir = Path(directory)
+            output = workdir / "canonical.iso"
+            user_directory = workdir / "dolphin-user"
+            user_directory.mkdir()
+
+            run_backend(
+                self.backend,
+                (
+                    "convert",
+                    "-u",
+                    str(user_directory),
+                    "-i",
+                    str(path),
+                    "-o",
+                    str(output),
+                    "-f",
+                    "iso",
+                ),
+            )
+
+            if not output.is_file():
+                raise DolphinResponseError(
+                    "dolphin-tool conversion did not produce "
+                    "a canonical ISO"
+                )
+
+            return hash_file(output)
 
     def _header(self, path: Path) -> dict[str, object]:
         result = run_backend(
