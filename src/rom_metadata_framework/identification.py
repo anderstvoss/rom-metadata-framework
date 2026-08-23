@@ -18,6 +18,7 @@ from .verification import (
     DEFAULT_VERIFICATION_POLICY,
     VerificationPolicy,
     VerificationReport,
+    VerificationStatus,
     verify_release,
 )
 
@@ -199,6 +200,28 @@ class IdentificationVerification:
         """Whether the exact physical representation is known good."""
 
         return self.physical_known_good
+
+    @property
+    def has_conflicts(self) -> bool:
+        """Whether either verification path contains a conflict."""
+
+        return any(
+            report is not None
+            and report.status is VerificationStatus.CONFLICT
+            for report in (
+                self.physical,
+                self.normalized,
+            )
+        )
+
+    @property
+    def safe_for_canonical_naming(self) -> bool:
+        """Whether verified content may safely supply a canonical name."""
+
+        return (
+            self.content_known_good
+            and not self.has_conflicts
+        )
 
 
 def verify_identification(
