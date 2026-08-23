@@ -98,6 +98,48 @@ class IdentificationResult:
         return self.physical_match is None and self.normalized_match is not None
 
     @property
+    def identified(self) -> bool:
+        """Whether reconciliation selected a canonical release."""
+
+        return self.canonical_match is not None
+
+    @property
+    def has_normalized_content(self) -> bool:
+        """Whether canonical-content normalization produced evidence."""
+
+        return self.normalized_content is not None
+
+    @property
+    def has_physical_representation(self) -> bool:
+        """Whether representation-specific evidence is available."""
+
+        return self.physical_representation is not None
+
+    @property
+    def has_local_metadata(self) -> bool:
+        """Whether metadata was extracted directly from represented content."""
+
+        return self.local_metadata is not None
+
+    @property
+    def has_release_conflict(self) -> bool:
+        """Whether physical and normalized release evidence conflicts."""
+
+        return bool(
+            self.release_reconciliation is not None
+            and self.release_reconciliation.has_conflict
+        )
+
+    @property
+    def has_platform_conflict(self) -> bool:
+        """Whether local and provider platform evidence conflicts."""
+
+        return bool(
+            self.platform_reconciliation is not None
+            and self.platform_reconciliation.has_conflict
+        )
+
+    @property
     def physical_representation_matched(self) -> bool:
         """Whether the exact physical representation matched a provider."""
 

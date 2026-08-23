@@ -15,7 +15,7 @@ from rom_metadata_framework.identification import (
     IdentificationResult,
     identify_file,
 )
-from rom_metadata_framework.identity import HashSet
+from rom_metadata_framework.identity import HashSet, RomIdentity
 
 
 class FakeDetector:
@@ -1199,3 +1199,68 @@ def test_identification_without_normalizer_has_no_representation(
     )
 
     assert result.physical_representation is None
+
+
+def test_identification_result_exposes_common_state_helpers() -> None:
+    result = IdentificationResult(
+        physical_identity=RomIdentity(),
+        platform_detection=PlatformDetection(),
+    )
+
+    assert not result.identified
+    assert not result.has_normalized_content
+    assert not result.has_physical_representation
+    assert not result.has_local_metadata
+    assert not result.has_release_conflict
+    assert not result.has_platform_conflict
+
+
+def test_identification_result_positive_state_helpers() -> None:
+    canonical = CanonicalReleaseIdentity(
+        release_name="Example",
+        platform="nes",
+        source="test",
+        source_id="1",
+    )
+
+    result = IdentificationResult(
+        physical_identity=RomIdentity(),
+        platform_detection=PlatformDetection(),
+        physical_match=canonical,
+        normalized_content=NormalizedContentIdentity(
+            kind="rom",
+            hashes=HashSet(),
+        ),
+    )
+
+    assert result.identified
+    assert result.has_normalized_content
+    assert not result.matched_via_normalization
+    assert result.physical_representation_matched
+    assert not result.normalized_content_matched
+
+
+def test_identification_result_conflict_helpers() -> None:
+    from rom_metadata_framework.reconciliation import (
+        PlatformReconciliation,
+        PlatformReconciliationStatus,
+    )
+    from rom_metadata_framework.release_reconciliation import (
+        ReleaseReconciliation,
+        ReleaseReconciliationStatus,
+    )
+
+    result = IdentificationResult(
+        physical_identity=RomIdentity(),
+        platform_detection=PlatformDetection(),
+        release_reconciliation=ReleaseReconciliation(
+            status=ReleaseReconciliationStatus.RELEASE_CONFLICT,
+        ),
+        platform_reconciliation=PlatformReconciliation(
+            status=PlatformReconciliationStatus.CONFLICT,
+        ),
+    )
+
+    assert not result.identified
+    assert result.has_release_conflict
+    assert result.has_platform_conflict

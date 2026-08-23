@@ -170,6 +170,36 @@ class MetadataEnrichmentResult:
         return self.provider_report.results
 
     @property
+    def metadata_collection_attempted(self) -> bool:
+        """Whether provider metadata collection was performed."""
+
+        return self.provider_report is not None
+
+    @property
+    def has_local_metadata(self) -> bool:
+        """Whether local structural metadata is available."""
+
+        return self.local_metadata is not None
+
+    @property
+    def has_provider_metadata(self) -> bool:
+        """Whether any provider returned matched metadata."""
+
+        return bool(self.provider_results)
+
+    @property
+    def has_metadata(self) -> bool:
+        """Whether either local or provider metadata is available."""
+
+        return self.has_local_metadata or self.has_provider_metadata
+
+    @property
+    def has_metadata_divergence(self) -> bool:
+        """Whether comparable local and provider metadata diverges."""
+
+        return self.metadata_reconciliation.has_divergence
+
+    @property
     def metadata_reconciliation(
         self,
     ) -> MetadataReconciliationReport:

@@ -94,6 +94,45 @@ The primary root workflows are:
 
 See the tests for the exact root export contract.
 
+## Result ergonomics
+
+Identification and metadata-enrichment results preserve their full evidence
+layers while also exposing convenience properties for common consumer checks.
+These helpers report state only; they do not change reconciliation, provider
+selection, verification, metadata precedence, or naming behavior.
+
+For example:
+
+```python
+result = identify_file(...)
+
+if result.identified:
+    canonical = result.canonical_match
+
+if result.has_local_metadata:
+    local = result.local_metadata
+
+if result.has_release_conflict or result.has_platform_conflict:
+    # Inspect the retained reconciliation evidence.
+    ...
+```
+
+After metadata enrichment, callers can distinguish whether provider collection
+was attempted from whether any provider actually returned metadata:
+
+```python
+enriched = collect_identification_metadata(...)
+
+if enriched.metadata_collection_attempted:
+    ...
+
+if enriched.has_provider_metadata:
+    provider_results = enriched.provider_results
+
+if enriched.has_metadata_divergence:
+    reconciliation = enriched.metadata_reconciliation
+```
+
 ## Design goals
 
 - Keep platform-specific identification behind modular adapters.
