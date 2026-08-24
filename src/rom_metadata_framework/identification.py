@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -128,6 +129,19 @@ class LookupResolver(Protocol):
     ) -> CanonicalReleaseIdentity | None:
         """Identify from an explicit lookup identity."""
         ...
+
+
+ProgressCallback = Callable[[str], None]
+
+
+def _emit_progress(
+    progress: ProgressCallback | None,
+    stage: str,
+) -> None:
+    """Emit one coarse identification stage when requested."""
+
+    if progress is not None:
+        progress(stage)
 
 
 class ContentNormalizer(Protocol):
@@ -570,6 +584,7 @@ def identify_file(
     inspector: StructuralInspector | None = None,
     force_normalization: bool = False,
     selection: IdentificationSelection | None = None,
+    progress: ProgressCallback | None = None,
 ) -> IdentificationResult:
     """Identify one file while preserving independent evidence paths.
 
@@ -600,6 +615,10 @@ def identify_file(
             selection.effective_platform
         )
 
+        _emit_progress(
+            progress,
+            "Checking restricted platform",
+        )
         platform_detection = detector.detect(
             path
         )
@@ -632,6 +651,10 @@ def identify_file(
                     ),
                 )
 
+            _emit_progress(
+                progress,
+                "Checking restricted identity",
+            )
             inspection_result = inspector.inspect(
                 path
             )
@@ -673,11 +696,19 @@ def identify_file(
                     ),
                 )
 
+    _emit_progress(
+        progress,
+        "Hashing physical file",
+    )
     physical_identity = GenericHashAdapter().identify(
         path
     )
 
     if platform_detection is None:
+        _emit_progress(
+            progress,
+            "Detecting platform",
+        )
         platform_detection = detector.detect(
             path
         )
@@ -688,6 +719,11 @@ def identify_file(
             "name",
             type(resolver).__name__,
         )
+    )
+
+    _emit_progress(
+        progress,
+        "Looking up physical file",
     )
 
     try:
@@ -717,6 +753,10 @@ def identify_file(
 
     if inspector is not None:
         if inspection_result is None:
+            _emit_progress(
+                progress,
+                "Inspecting structure",
+            )
             inspection_result = inspector.inspect(
                 path
             )
@@ -785,6 +825,11 @@ def identify_file(
     )
 
     if should_normalize:
+        _emit_progress(
+            progress,
+            "Normalizing content",
+        )
+
         try:
             normalized_result = normalizer.identify(path)
         except NoSupportingNormalizerError:
@@ -881,6 +926,11 @@ def identify_file(
                 hashes=normalized_content.hashes,
             )
 
+            _emit_progress(
+                progress,
+                "Looking up normalized content",
+            )
+
             try:
                 normalized_match = resolver.identify_lookup(
                     lookup
@@ -901,6 +951,11 @@ def identify_file(
                         else ProviderLookupStatus.NO_MATCH
                     )
                 )
+
+    _emit_progress(
+        progress,
+        "Reconciling evidence",
+    )
 
     release_reconciliation = reconcile_release_matches(
         physical_match,

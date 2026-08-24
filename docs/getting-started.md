@@ -36,6 +36,23 @@ For full release identification through Playmatch:
 rom-metadata identify /path/to/game
 ~~~
 
+Large files may spend noticeable time in whole-file hashing or optional
+representation-specific work. To show the current coarse stage without mixing
+status text into result output:
+
+~~~text
+rom-metadata identify /path/to/game --progress
+~~~
+
+For timed multiline stage reporting:
+
+~~~text
+rom-metadata identify /path/to/game --verbose
+~~~
+
+Both modes write progress to standard error. Normal text or `--json` results
+remain on standard output.
+
 To prioritize a known platform or native identifier:
 
 ~~~text

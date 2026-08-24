@@ -3,11 +3,13 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import threading
+import time
 from collections.abc import Mapping, Sequence
 from dataclasses import fields, is_dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO
 
 from .contracts import FrameworkContractError
 from .defaults import (
@@ -60,6 +62,182 @@ EXIT_USAGE = 2
 EXIT_UNRESOLVED = 3
 EXIT_CONFLICT = 4
 EXIT_ERROR = 5
+
+
+class _ProgressReporter:
+    """Render coarse identification progress to stderr."""
+
+    _FRAMES = ("|", "/", "-", "\\")
+
+    def __init__(
+        self,
+        *,
+        verbose: bool,
+        stream: TextIO | None = None,
+        interval: float = 0.1,
+    ) -> None:
+        self.verbose = verbose
+        self.stream = (
+            sys.stderr
+            if stream is None
+            else stream
+        )
+        self.interval = interval
+        self._stage = ""
+        self._frame = 0
+        self._started = time.monotonic()
+        self._stop = threading.Event()
+        self._lock = threading.Lock()
+        self._thread: threading.Thread | None = None
+        self._tty = bool(
+            getattr(
+                self.stream,
+                "isatty",
+                lambda: False,
+            )()
+        )
+
+    def stage(self, stage: str) -> None:
+        """Display one newly entered workflow stage."""
+
+        if self.verbose:
+            elapsed = time.monotonic() - self._started
+            print(
+                f"[{elapsed:8.2f}s] {stage}",
+                file=self.stream,
+                flush=True,
+            )
+            return
+
+        if not self._tty:
+            print(
+                f"[progress] {stage}",
+                file=self.stream,
+                flush=True,
+            )
+            return
+
+        with self._lock:
+            self._stage = stage
+
+        if self._thread is None:
+            self._thread = threading.Thread(
+                target=self._animate,
+                name="rom-metadata-progress",
+                daemon=True,
+            )
+            self._thread.start()
+
+    def _animate(self) -> None:
+        while not self._stop.is_set():
+            with self._lock:
+                stage = self._stage
+                frame = self._FRAMES[
+                    self._frame % len(self._FRAMES)
+                ]
+                self._frame += 1
+
+            if stage:
+                self.stream.write(
+                    f"\r{frame} {stage}"
+                )
+                self.stream.flush()
+
+            self._stop.wait(self.interval)
+
+    def _stop_animation(self) -> None:
+        """Stop and clear any active single-line animation."""
+
+        if self._thread is not None:
+            self._stop.set()
+            self._thread.join()
+            self._thread = None
+
+        if self._tty and not self.verbose:
+            self.stream.write("\r\033[K")
+            self.stream.flush()
+
+    def cancel(self) -> None:
+        """Clean up progress rendering without reporting an outcome."""
+
+        self._stop_animation()
+
+    def finish(
+        self,
+        message: str,
+        *,
+        symbol: str = "✓",
+    ) -> None:
+        """Stop live rendering and emit one terminal status line."""
+
+        self._stop_animation()
+
+        if self.verbose:
+            elapsed = time.monotonic() - self._started
+            message = f"{message} ({elapsed:.2f}s)"
+
+        print(
+            f"{symbol} {message}",
+            file=self.stream,
+            flush=True,
+        )
+
+
+def _identification_progress_result(
+    result: object,
+) -> tuple[str, str]:
+    """Return the terminal progress symbol and summary."""
+
+    provider_unavailable = bool(
+        getattr(
+            result,
+            "provider_unavailable",
+            False,
+        )
+    )
+
+    if (
+        bool(
+            getattr(
+                result,
+                "has_release_conflict",
+                False,
+            )
+        )
+        or bool(
+            getattr(
+                result,
+                "has_platform_conflict",
+                False,
+            )
+        )
+    ):
+        return "✗", "Identification conflict"
+
+    strength = getattr(
+        result,
+        "identification_strength",
+        None,
+    )
+    strength = getattr(
+        strength,
+        "value",
+        strength,
+    )
+
+    if strength == "catalogue":
+        return "✓", "Identified"
+
+    if strength == "local_strong":
+        if provider_unavailable:
+            return "!", "Local identification; catalogue unavailable"
+
+        return "✓", "Local identification"
+
+    if provider_unavailable:
+        return "!", "Catalogue unavailable"
+
+    return "!", "Identification unresolved"
 
 
 def _jsonable(value: Any) -> Any:
@@ -2076,6 +2254,34 @@ def _selection_from_values(
     )
 
 
+def _add_progress_arguments(
+    parser: argparse.ArgumentParser,
+) -> None:
+    """Add shared identification progress options."""
+
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
+        "--progress",
+        action="store_const",
+        const="progress",
+        dest="progress_mode",
+        help=(
+            "show a live coarse-stage progress indicator "
+            "on stderr"
+        ),
+    )
+    group.add_argument(
+        "--verbose",
+        action="store_const",
+        const="verbose",
+        dest="progress_mode",
+        help=(
+            "show timed multiline identification "
+            "stage progress on stderr"
+        ),
+    )
+
+
 def _add_selection_arguments(
     parser: argparse.ArgumentParser,
 ) -> None:
@@ -2113,6 +2319,7 @@ def _run_identification_workflow(
     normalize: bool,
     conflict_context: str,
     selection: IdentificationSelection | None = None,
+    progress_mode: str | None = None,
 ) -> tuple[object | None, int | None]:
     """Run the shared full identification workflow for CLI commands."""
 
@@ -2133,6 +2340,19 @@ def _run_identification_workflow(
         return None, EXIT_ERROR
 
     config = DefaultRuntimeConfig()
+
+    reporter = (
+        _ProgressReporter(
+            verbose=progress_mode == "verbose"
+        )
+        if progress_mode is not None
+        else None
+    )
+
+    identify_kwargs: dict[str, object] = {}
+
+    if reporter is not None:
+        identify_kwargs["progress"] = reporter.stage
 
     try:
         result = identify_file(
@@ -2155,8 +2375,14 @@ def _run_identification_workflow(
                 else None
             ),
             selection=selection,
+            **identify_kwargs,
         )
     except RequestedIdentityMismatchError as exc:
+        if reporter is not None:
+            reporter.finish(
+                "Identification conflict",
+                symbol="✗",
+            )
         payload = {
             "path": str(path),
             "error": "requested-identity-mismatch",
@@ -2185,6 +2411,12 @@ def _run_identification_workflow(
         return None, EXIT_CONFLICT
 
     except RequestedIdentityUnresolvedError as exc:
+        if reporter is not None:
+            reporter.finish(
+                "Identification unresolved",
+                symbol="✗",
+            )
+
         payload = {
             "path": str(path),
             "error": "requested-identity-unresolved",
@@ -2207,6 +2439,12 @@ def _run_identification_workflow(
         return None, EXIT_UNRESOLVED
 
     except RequestedPlatformUnresolvedError as exc:
+        if reporter is not None:
+            reporter.finish(
+                "Identification unresolved",
+                symbol="✗",
+            )
+
         payload = {
             "path": str(path),
             "error": "requested-platform-unresolved",
@@ -2225,6 +2463,12 @@ def _run_identification_workflow(
         return None, EXIT_UNRESOLVED
 
     except AmbiguousStructuralInspectorError as exc:
+        if reporter is not None:
+            reporter.finish(
+                "Identification conflict",
+                symbol="✗",
+            )
+
         payload = {
             "path": str(path),
             "error": "ambiguous-structural-inspection",
@@ -2246,6 +2490,12 @@ def _run_identification_workflow(
 
         return None, EXIT_CONFLICT
     except PlaymatchError as exc:
+        if reporter is not None:
+            reporter.finish(
+                "Identification failed",
+                symbol="✗",
+            )
+
         payload = {
             "path": str(path),
             "error": "provider-error",
@@ -2263,6 +2513,12 @@ def _run_identification_workflow(
 
         return None, EXIT_ERROR
     except FrameworkContractError as exc:
+        if reporter is not None:
+            reporter.finish(
+                "Identification failed",
+                symbol="✗",
+            )
+
         payload = {
             "path": str(path),
             "error": "framework-contract-error",
@@ -2279,6 +2535,12 @@ def _run_identification_workflow(
 
         return None, EXIT_ERROR
     except OSError as exc:
+        if reporter is not None:
+            reporter.finish(
+                "Identification failed",
+                symbol="✗",
+            )
+
         payload = {
             "path": str(path),
             "error": "io-error",
@@ -2295,6 +2557,21 @@ def _run_identification_workflow(
 
         return None, EXIT_ERROR
 
+    except BaseException:
+        if reporter is not None:
+            reporter.cancel()
+
+        raise
+
+    if reporter is not None:
+        symbol, message = _identification_progress_result(
+            result
+        )
+        reporter.finish(
+            message,
+            symbol=symbol,
+        )
+
     return result, None
 
 
@@ -2306,6 +2583,7 @@ def _identify_path(
     complete: bool = False,
     include_hashes: bool = False,
     selection: IdentificationSelection | None = None,
+    progress_mode: str | None = None,
 ) -> int:
     """Run the complete hashing/provider identification workflow."""
 
@@ -2315,6 +2593,11 @@ def _identify_path(
         normalize=normalize,
         conflict_context="identification",
         selection=selection,
+        **(
+            {"progress_mode": progress_mode}
+            if progress_mode is not None
+            else {}
+        ),
     )
 
     if error_code is not None:
@@ -2480,6 +2763,7 @@ def _verify_path(
     as_json: bool,
     normalize: bool,
     selection: IdentificationSelection | None = None,
+    progress_mode: str | None = None,
 ) -> int:
     """Identify and conservatively verify a release."""
 
@@ -2489,6 +2773,11 @@ def _verify_path(
         normalize=normalize,
         conflict_context="verification",
         selection=selection,
+        **(
+            {"progress_mode": progress_mode}
+            if progress_mode is not None
+            else {}
+        ),
     )
 
     if error_code is not None:
@@ -2658,6 +2947,7 @@ def _plan_rename_path(
     as_json: bool,
     normalize: bool,
     selection: IdentificationSelection | None = None,
+    progress_mode: str | None = None,
 ) -> int:
     """Identify one file and emit a non-mutating canonical rename plan."""
 
@@ -2667,6 +2957,11 @@ def _plan_rename_path(
         normalize=normalize,
         conflict_context="rename planning",
         selection=selection,
+        **(
+            {"progress_mode": progress_mode}
+            if progress_mode is not None
+            else {}
+        ),
     )
 
     if error_code is not None:
@@ -2733,6 +3028,7 @@ def _rename_path(
     normalize: bool,
     selection: IdentificationSelection | None,
     assume_yes: bool,
+    progress_mode: str | None = None,
 ) -> int:
     """Identify, confirm, and rename one file conservatively."""
 
@@ -2752,6 +3048,11 @@ def _rename_path(
         normalize=normalize,
         conflict_context="rename",
         selection=selection,
+        **(
+            {"progress_mode": progress_mode}
+            if progress_mode is not None
+            else {}
+        ),
     )
 
     if error_code is not None:
@@ -2982,6 +3283,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="ROM, package, or disc-image path",
     )
     _add_selection_arguments(identify)
+    _add_progress_arguments(identify)
     identify.add_argument(
         "--json",
         action="store_true",
@@ -3026,6 +3328,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="ROM, package, or disc-image path",
     )
     _add_selection_arguments(plan_rename)
+    _add_progress_arguments(plan_rename)
     plan_rename.add_argument(
         "--json",
         action="store_true",
@@ -3054,6 +3357,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="ROM, package, or disc-image path",
     )
     _add_selection_arguments(rename)
+    _add_progress_arguments(rename)
     rename.add_argument(
         "--no-normalize",
         action="store_true",
@@ -3085,6 +3389,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="ROM, package, or disc-image path",
     )
     _add_selection_arguments(verify)
+    _add_progress_arguments(verify)
     verify.add_argument(
         "--json",
         action="store_true",
@@ -3159,6 +3464,7 @@ def main(
             complete=args.complete,
             include_hashes=args.hashes,
             selection=selection,
+            progress_mode=args.progress_mode,
         )
 
     if args.command == "plan-rename":
@@ -3176,6 +3482,7 @@ def main(
             as_json=args.as_json,
             normalize=not args.no_normalize,
             selection=selection,
+            progress_mode=args.progress_mode,
         )
 
     if args.command == "rename":
@@ -3193,6 +3500,7 @@ def main(
             normalize=not args.no_normalize,
             selection=selection,
             assume_yes=args.yes,
+            progress_mode=args.progress_mode,
         )
 
     if args.command == "verify":
@@ -3210,6 +3518,7 @@ def main(
             as_json=args.as_json,
             normalize=not args.no_normalize,
             selection=selection,
+            progress_mode=args.progress_mode,
         )
 
     parser.error(

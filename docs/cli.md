@@ -144,6 +144,8 @@ release lookup.
 
 ~~~text
 rom-metadata identify PATH
+rom-metadata identify PATH --progress
+rom-metadata identify PATH --verbose
 rom-metadata identify PATH --json
 rom-metadata identify PATH --hashes
 rom-metadata identify PATH --json --complete
@@ -174,6 +176,28 @@ cases requiring normalized evidence may still perform normalization.
 
 Because whole-file hashing is part of this command, runtime cost scales with
 file size.
+
+`--progress` writes a live single-line coarse-stage indicator to standard error
+when attached to a terminal. The stage label changes only when the underlying
+workflow actually enters a new operation, such as physical hashing, platform
+detection, provider lookup, structural inspection, normalization, normalized
+lookup, or evidence reconciliation. When standard error is not a terminal,
+progress falls back to one line per stage rather than emitting terminal control
+sequences.
+
+`--verbose` writes timed multiline stage transitions to standard error. It is
+intended for diagnosing where identification time is being spent. `--progress`
+and `--verbose` are mutually exclusive.
+
+Both modes leave normal result output on standard output. This includes
+`--json`, so commands such as:
+
+~~~text
+rom-metadata identify PATH --json --progress
+~~~
+
+still emit only JSON on standard output while progress remains on standard
+error.
 
 The default text output is intentionally concise. Available fields may include:
 
@@ -258,6 +282,8 @@ continues to use the unresolved exit status.
 
 ~~~text
 rom-metadata plan-rename PATH
+rom-metadata plan-rename PATH --progress
+rom-metadata plan-rename PATH --verbose
 rom-metadata plan-rename PATH --json
 rom-metadata plan-rename PATH --no-normalize
 rom-metadata plan-rename PATH --platform wii
@@ -307,6 +333,8 @@ options in this command.
 
 ~~~text
 rom-metadata rename PATH
+rom-metadata rename PATH --progress
+rom-metadata rename PATH --verbose
 rom-metadata rename PATH --yes
 rom-metadata rename PATH --identity wii:ABCD01
 rom-metadata rename PATH --identity wii:ABCD01 --restrict
@@ -356,6 +384,8 @@ A successful rename returns exit code `0`. Unresolved/unsafe results return
 
 ~~~text
 rom-metadata verify PATH
+rom-metadata verify PATH --progress
+rom-metadata verify PATH --verbose
 rom-metadata verify PATH --json
 rom-metadata verify PATH --no-normalize
 rom-metadata verify PATH --platform wii
@@ -378,6 +408,14 @@ The current policy can establish `known_good` from accepted strong content
 matches against trusted catalogue authorities such as No-Intro or Redump,
 subject to catalogue evidence and policy requirements.
 
+An exact or otherwise authoritative catalogue identification does not
+automatically imply `known_good`. For example, a matching record can remain
+`catalogue_match` when its catalogue authority is not trusted by the current
+verification policy, its record is not current when current-catalogue evidence
+is required, or its verification status does not meet the accepted policy.
+Such a result may identify the release successfully while still remaining
+insufficient for canonical rename authorization.
+
 This command is not a specialist cryptographic or media-integrity verifier.
 For example, it does not currently perform platform-specific optical-disc
 sector validation, IRD verification, Nintendo signature verification, or
@@ -399,9 +437,28 @@ Examples of code `3` include an unsupported local structural inspection,
 an unresolved release identity, or a verification result that is not strong
 enough to be classified `known_good` or conflict/known-bad.
 
+## Progress and standard streams
+
+`identify`, `plan-rename`, `rename`, and `verify` accept the shared progress
+options:
+
+- `--progress`: live coarse-stage progress on standard error;
+- `--verbose`: timed multiline stage progress on standard error.
+
+The options are mutually exclusive. Terminal animation is used only for
+`--progress` when standard error is attached to a terminal; redirected/non-TTY
+progress uses ordinary lines. Terminal outcomes distinguish successful
+catalogue identification, strong local identification, catalogue
+unavailability, conflicts, unresolved results, and operational failure.
+
+`inspect` intentionally does not expose these options because its local
+detection/inspection workflow is bounded and does not perform the full
+hash/provider/normalization pipeline.
+
 ## JSON output
 
-`--json` emits machine-readable JSON to standard output.
+`--json` emits machine-readable JSON to standard output. Progress output remains
+on standard error and does not contaminate the JSON stream.
 
 The path-oriented commands use explicit CLI projection code rather than
 automatically serializing internal dataclasses. This prevents an internal model
