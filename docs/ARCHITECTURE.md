@@ -421,3 +421,61 @@ and does not cause normalized provider lookup.
 There is currently no Xbox 360 normalizer and no Xbox 360 normalization
 runtime capability. No RetroAchievements/rcheevos Xbox 360 backend
 mapping is currently registered.
+
+## Nintendo Switch container support
+
+The default runtime includes bounded, dependency-free detection and
+non-normalizing structural inspection for Nintendo Switch NSP package
+containers and XCI game-card images.
+
+Switch detection is representation-aware:
+
+- NSP support requires a valid bounded PFS0 container with at least one
+  NCA entry and at least one `.cnmt.nca` content-meta NCA.
+- XCI support requires valid `HEAD` game-card header magic, a bounded
+  header-derived root HFS0 filesystem, a `secure` HFS0 partition, and
+  NCA/content-meta entries in that secure partition.
+- File extensions and filenames alone are not sufficient platform
+  evidence.
+- Malformed or truncated PFS0/HFS0 extents are rejected rather than
+  accepted from partial structure.
+
+The outer PFS0/HFS0 tables and XCI game-card header are plaintext and can
+be inspected without Nintendo Switch keys. NCA headers and most metadata
+within NCA content remain encrypted and are not decoded by the framework.
+
+Some NSP packages contain a plaintext `.cnmt.xml` sidecar. When present,
+bounded XML parsing may preserve root `ContentMeta` facts such as:
+
+- application title ID when the root content-meta type is `Application`;
+- application version;
+- required system version;
+- patch title ID.
+
+Nested content IDs in CNMT XML are content identifiers and are not treated
+as application title IDs.
+
+Ticket filenames may expose a 128-bit rights ID. The first 64 bits are
+preserved separately as a rights title ID. Rights title IDs are local
+rights evidence only and are not automatically promoted to application
+identity: for example, an XCI may carry a patch rights ID rather than the
+base application ID.
+
+Nintendo Switch structural inspection may therefore preserve:
+
+- container representation (`pfs0` package or `xci` game-card image);
+- NCA and content-meta-NCA counts;
+- optional application ID and version from plaintext Application CNMT XML;
+- optional required-system-version and patch-ID metadata;
+- ticket rights IDs and rights title IDs with distinct provenance.
+
+Packages without plaintext CNMT XML can still be detected and inspected,
+but application identity is intentionally left unspecified unless it can
+be established from supported plaintext structural metadata.
+
+Switch structural evidence does not create normalized content identity and
+does not trigger normalized provider lookup.
+
+There is currently no Nintendo Switch normalizer, no Nintendo Switch
+normalization runtime capability, and no RetroAchievements/rcheevos
+Nintendo Switch backend mapping.

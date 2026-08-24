@@ -20,6 +20,10 @@ from .ps3 import (
     Ps3StructuralInspector,
 )
 from .routing import CompositeNormalizer
+from .switch import (
+    NintendoSwitchPlatformDetector,
+    NintendoSwitchStructuralInspector,
+)
 from .xbox import (
     XDVDFS_EXECUTABLE,
     XboxAdapter,
@@ -105,6 +109,7 @@ def build_default_detector(
                 executable=config.dolphin_executable,
             ),
             Xbox360PlatformDetector(),
+            NintendoSwitchPlatformDetector(),
             XboxPlatformDetector(
                 executable=config.xbox_executable,
             ),
@@ -127,6 +132,7 @@ def build_default_inspector(
             Ps2StructuralInspector(),
             Ps3StructuralInspector(),
             Xbox360StructuralInspector(),
+            NintendoSwitchStructuralInspector(),
         )
     )
 
