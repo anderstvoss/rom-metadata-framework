@@ -24,10 +24,11 @@ uv run --frozen python examples/runtime_capabilities.py
 
 
 The standard detector composition includes NES, PlayStation 2,
-PlayStation 3, Xbox 360, GameCube/Wii, and original Xbox detection.
-Structural inspection is enabled for PlayStation 2, directly readable
-PlayStation 3 ISO9660 disc images, and Xbox 360 XDVDFS/XEX2 disc images.
-PS3 and Xbox 360 structural inspection preserve artifact-local metadata
+PlayStation 3, Xbox 360, Nintendo Switch, GameCube/Wii, and original Xbox
+detection. Structural inspection is enabled for PlayStation 2, directly
+readable PlayStation 3 ISO9660 disc images, Xbox 360 XDVDFS/XEX2 disc
+images, and Nintendo Switch NSP/XCI containers. PS3, Xbox 360, and
+Nintendo Switch structural inspection preserve artifact-local metadata
 without creating normalized content.
 
 The standard runtime reports separate capabilities for NES, Dolphin, and

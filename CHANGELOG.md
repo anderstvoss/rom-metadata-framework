@@ -8,6 +8,14 @@ yet. Versioning and release expectations are documented in
 
 ## [Unreleased]
 
+- Add bounded Nintendo Switch NSP/XCI detection and structural inspection,
+  including dependency-free PFS0/HFS0 parsing, optional plaintext
+  Application CNMT XML metadata, and separately provenanced ticket rights
+  identifiers without introducing a Switch normalization path.
+- Reject malformed/truncated Switch container extents and require
+  Switch-specific NCA/content-meta structure rather than treating generic
+  PFS0/HFS0 magic or filename extensions as sufficient platform evidence.
+
 - Add bounded Xbox 360 XDVDFS/XEX2 disc detection and structural
   inspection, including title ID, media ID, executable version, and
   disc metadata without introducing an Xbox 360 normalization path.

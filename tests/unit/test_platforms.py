@@ -139,3 +139,22 @@ def test_xbox360_platform_aliases() -> None:
         )
         == "xbox-360"
     )
+
+
+def test_nintendo_switch_platform_aliases() -> None:
+    assert (
+        canonical_platform_name(
+            "nintendo-switch"
+        )
+        == "nintendo-switch"
+    )
+    assert (
+        canonical_platform_name("switch")
+        == "nintendo-switch"
+    )
+    assert (
+        canonical_platform_name(
+            "nintendo-switch-console"
+        )
+        == "nintendo-switch"
+    )

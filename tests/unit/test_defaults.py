@@ -238,6 +238,9 @@ def test_default_detector_registers_platform_detectors() -> None:
     from rom_metadata_framework.ps3 import (
         Ps3PlatformDetector,
     )
+    from rom_metadata_framework.switch import (
+        NintendoSwitchPlatformDetector,
+    )
     from rom_metadata_framework.xbox import (
         XboxPlatformDetector,
     )
@@ -256,6 +259,7 @@ def test_default_detector_registers_platform_detectors() -> None:
         Ps3PlatformDetector,
         DolphinPlatformDetector,
         Xbox360PlatformDetector,
+        NintendoSwitchPlatformDetector,
         XboxPlatformDetector,
     )
 
@@ -267,6 +271,9 @@ def test_default_detector_passes_backend_configuration() -> None:
     )
     from rom_metadata_framework.dolphin import (
         DolphinPlatformDetector,
+    )
+    from rom_metadata_framework.switch import (
+        NintendoSwitchPlatformDetector,
     )
     from rom_metadata_framework.xbox import (
         XboxPlatformDetector,
@@ -284,7 +291,8 @@ def test_default_detector_passes_backend_configuration() -> None:
 
     dolphin = detector.detectors[3]
     xbox360 = detector.detectors[4]
-    xbox = detector.detectors[5]
+    switch = detector.detectors[5]
+    xbox = detector.detectors[6]
 
     assert isinstance(
         dolphin,
@@ -293,6 +301,10 @@ def test_default_detector_passes_backend_configuration() -> None:
     assert isinstance(
         xbox360,
         Xbox360PlatformDetector,
+    )
+    assert isinstance(
+        switch,
+        NintendoSwitchPlatformDetector,
     )
     assert isinstance(
         xbox,
@@ -331,6 +343,9 @@ def test_default_inspector_registers_structural_inspectors() -> None:
     from rom_metadata_framework.ps3 import (
         Ps3StructuralInspector,
     )
+    from rom_metadata_framework.switch import (
+        NintendoSwitchStructuralInspector,
+    )
     from rom_metadata_framework.xbox360 import (
         Xbox360StructuralInspector,
     )
@@ -344,6 +359,7 @@ def test_default_inspector_registers_structural_inspectors() -> None:
         Ps2StructuralInspector,
         Ps3StructuralInspector,
         Xbox360StructuralInspector,
+        NintendoSwitchStructuralInspector,
     )
 
 def test_default_inspector_rejects_invalid_config() -> None:
