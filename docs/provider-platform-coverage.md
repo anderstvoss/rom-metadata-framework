@@ -24,6 +24,34 @@ performed using that normalized content.
 Playmatch is therefore a release/catalogue resolver. It is not the framework's
 platform registry and does not define canonical framework platform names.
 
+## Playmatch native-identifier lookup limitation
+
+The current Playmatch v2 API used by this project does not expose a generic
+request path that accepts platform-native identifiers such as a PS2 product
+code, Wii/GameCube Game ID, PS3 title ID, Xbox title ID, Xbox 360 title/media
+ID, or Nintendo Switch Application ID and resolves that value directly to a
+candidate release.
+
+Some Playmatch response objects may contain serial/native-identifier data, but
+that is returned evidence rather than a supported native-ID query input.
+
+Consequently, `--identity PLATFORM:ID` is implemented as a local routing and
+evidence hypothesis:
+
+- the platform is preferred first;
+- locally extracted native identity is compared when available;
+- unrestricted workflows may fall back to normal discovery;
+- restricted workflows can reject a mismatch before whole-file hashing or
+  provider lookup.
+
+The framework must not substitute fuzzy title search for native-ID resolution,
+must not assume Playmatch game/file UUIDs are platform-native IDs, and must not
+treat a mismatched requested identity as trusted replacement metadata.
+
+This limitation is particularly important to executable rename behavior:
+`--yes` confirms an otherwise-safe rename but cannot force a file to a
+mismatched requested identity.
+
 ## Playmatch platform-name reconciliation
 
 Playmatch returns textual platform display names.

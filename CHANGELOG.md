@@ -8,6 +8,34 @@ yet. Versioning and release expectations are documented in
 
 ## [Unreleased]
 
+- Add directed platform and platform-native identity selection across
+  `inspect`, `identify`, `plan-rename`, `rename`, and `verify`, with soft
+  preferred routing by default and hard compute-saving `--restrict` semantics.
+- Add bounded restricted-identity preflight so unsupported platforms,
+  unresolved native identifiers, and explicit native-ID mismatches can stop
+  before whole-file hashing or unrelated provider/backend work.
+- Add requested-identity matched/mismatched/unresolved evidence to
+  identification output without allowing a requested identity to overwrite
+  discovered identity.
+- Add explicit `rom-metadata rename` execution with interactive confirmation
+  and `-y` / `--yes` prompt bypass while retaining canonical verification,
+  conflict, path, and collision safety requirements.
+- Add guarded same-directory no-overwrite rename mutation, including symlink
+  source rejection, dangling-symlink destination protection, atomic hard-link
+  destination creation, and rollback handling for source-unlink failure.
+- Add structured canonical rename planning through `rom-metadata plan-rename`
+  and identification-aware naming using platform-native IDs, region,
+  non-default revision, and true multi-disc evidence when structurally
+  available.
+- Improve identification output with concise title/platform/region/native-ID/
+  revision/disc/format presentation plus concise and complete JSON projections.
+- Preserve useful local structural identification when Playmatch is unavailable
+  or has no match, and make optional normalization adaptive to physical
+  catalogue evidence.
+- Document Playmatch's current lack of generic platform-native-ID query support;
+  requested native identity remains local routing/evidence rather than a
+  provider-side release lookup primitive.
+
 - Add bounded Nintendo Switch NSP/XCI detection and structural inspection,
   including dependency-free PFS0/HFS0 parsing, optional plaintext
   Application CNMT XML metadata, and separately provenanced ticket rights

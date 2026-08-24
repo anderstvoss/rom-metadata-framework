@@ -36,6 +36,20 @@ For full release identification through Playmatch:
 rom-metadata identify /path/to/game
 ~~~
 
+To prioritize a known platform or native identifier:
+
+~~~text
+rom-metadata identify /path/to/game --platform wii
+rom-metadata identify /path/to/game --identity wii:ABCD01
+~~~
+
+These are soft preferences by default. Add `--restrict` when the request should
+be a hard compute-saving boundary that prevents unrelated platform work:
+
+~~~text
+rom-metadata identify /path/to/game --identity wii:ABCD01 --restrict
+~~~
+
 ## Check runtime capabilities
 
 Run:
@@ -186,8 +200,21 @@ country/region, and non-default revision.
 When a provider supplies only a release name, that release name is preserved
 rather than heuristically parsed for title, region, language, or revision.
 
-The default operation is `copy`. The framework returns a plan; it does not
+The default API operation is `copy`. Naming APIs return a plan and do not
 perform the filesystem mutation.
+
+The CLI provides a separate explicit mutation workflow:
+
+~~~text
+rom-metadata plan-rename /path/to/game
+rom-metadata rename /path/to/game
+rom-metadata rename /path/to/game --yes
+~~~
+
+`plan-rename` remains non-mutating. `rename` requires the same verified safe
+canonical naming result and prompts before changing the filename. `--yes`
+bypasses only that prompt; collision, path, identity, and verification safety
+checks remain mandatory.
 
 ## Metadata enrichment
 
