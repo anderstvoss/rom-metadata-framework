@@ -153,6 +153,43 @@ def authoritative_release(
     )
 
 
+def known_good_release(
+    *,
+    platform: str = "nes",
+    release_name: str = "Example Game (USA)",
+) -> CanonicalReleaseIdentity:
+    from rom_metadata_framework.canonical import (
+        IdentificationEvidence,
+    )
+    from rom_metadata_framework.provenance import (
+        CatalogueEvidence,
+    )
+
+    return CanonicalReleaseIdentity(
+        release_name=release_name,
+        platform=platform,
+        source="test",
+        source_id="known-good",
+        evidence=(
+            IdentificationEvidence(
+                source="test",
+                method="SHA1",
+                authoritative=True,
+            ),
+        ),
+        catalogue_evidence=(
+            CatalogueEvidence(
+                source="test",
+                match_method="SHA1",
+                authority="Redump",
+                catalogue_name="Synthetic Redump DAT",
+                file_status=None,
+                current_in_latest_catalogue=True,
+            ),
+        ),
+    )
+
+
 def test_physical_match_is_preferred(
     tmp_path: Path,
 ) -> None:
@@ -590,13 +627,13 @@ def test_no_provider_or_local_evidence_is_unresolved(
     assert result.display_title is None
 
 
-def test_authoritative_physical_match_skips_normalization(
+def test_known_good_physical_match_skips_normalization(
     tmp_path: Path,
 ) -> None:
-    path = tmp_path / "authoritative.nes"
+    path = tmp_path / "known-good.nes"
     path.write_bytes(b"physical-bytes")
 
-    physical = authoritative_release()
+    physical = known_good_release()
 
     normalizer = FakeNormalizer(
         HashSet(
@@ -629,6 +666,62 @@ def test_authoritative_physical_match_skips_normalization(
     assert (
         result.normalized_lookup.status
         is ProviderLookupStatus.NOT_ATTEMPTED
+    )
+
+
+def test_authoritative_unverified_physical_match_still_normalizes(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "authoritative-unverified.nes"
+    path.write_bytes(b"physical-bytes")
+
+    physical = authoritative_release()
+
+    normalizer = FakeNormalizer(
+        HashSet(
+            sha1=(
+                "0123456789abcdef0123456789abcdef"
+                "01234567"
+            ),
+        )
+    )
+
+    normalized = known_good_release()
+
+    resolver = FakeResolver(
+        physical=physical,
+        normalized=normalized,
+    )
+
+    result = identify_file(
+        path,
+        detector=FakeDetector("nes"),
+        resolver=resolver,
+        normalizer=normalizer,
+    )
+
+    assert result.physical_match is physical
+    assert result.normalized_content is not None
+    assert result.normalized_match is normalized
+
+    assert normalizer.identify_calls == 1
+    assert resolver.lookup_calls == 1
+
+    from rom_metadata_framework.identification import (
+        verify_identification,
+    )
+
+    verification = verify_identification(result)
+
+    assert not verification.physical_known_good
+    assert verification.normalized_known_good
+    assert verification.content_known_good
+    assert not verification.representation_known_good
+    assert verification.safe_for_canonical_naming
+
+    assert (
+        result.normalized_lookup.status
+        is ProviderLookupStatus.MATCHED
     )
 
 

@@ -554,10 +554,7 @@ def _should_normalize(
     ):
         return False
 
-    if (
-        physical_match is None
-        or not physical_match.has_authoritative_content_match
-    ):
+    if physical_match is None:
         return True
 
     local_platforms = _local_platforms(
@@ -565,12 +562,20 @@ def _should_normalize(
         local_metadata,
     )
 
-    if not local_platforms:
-        return False
-
-    return any(
+    if any(
         platform != physical_match.platform
         for platform in local_platforms
+    ):
+        return True
+
+    physical_verification = verify_release(
+        physical_match,
+        policy=DEFAULT_VERIFICATION_POLICY,
+    )
+
+    return not (
+        physical_match.has_authoritative_content_match
+        and physical_verification.known_good
     )
 
 
