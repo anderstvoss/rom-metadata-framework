@@ -2554,3 +2554,426 @@ def test_concise_region_prefers_country_over_broad_region() -> None:
     )
 
     assert payload["region"] == "USA"
+
+
+def _plan_rename_result(
+    *,
+    release_conflicts=(),
+):
+    from rom_metadata_framework.canonical import (
+        CanonicalReleaseIdentity,
+        IdentificationEvidence,
+    )
+    from rom_metadata_framework.detection import (
+        PlatformDetection,
+    )
+    from rom_metadata_framework.identification import (
+        IdentificationResult,
+    )
+    from rom_metadata_framework.identity import (
+        RomIdentity,
+    )
+    from rom_metadata_framework.local_metadata import (
+        LocalContentMetadata,
+        LocalIdentifier,
+        LocalMetadataProvenance,
+        LocalMetadataValue,
+    )
+
+    provenance = LocalMetadataProvenance(
+        source="synthetic",
+        method="fixture",
+    )
+
+    canonical = CanonicalReleaseIdentity(
+        title="Example Game",
+        release_name="Example Game (USA)",
+        platform="wii",
+        source="playmatch",
+        source_id="example-id",
+        evidence=(
+            IdentificationEvidence(
+                source="playmatch",
+                method="SHA1",
+                authoritative=True,
+            ),
+        ),
+        conflicts=release_conflicts,
+    )
+
+    result = IdentificationResult(
+        physical_identity=RomIdentity(
+            file_name="input.rvz",
+            file_size=1,
+        ),
+        platform_detection=PlatformDetection(),
+        physical_match=canonical,
+        local_metadata=LocalContentMetadata(
+            platform="wii",
+            identifiers=(
+                LocalIdentifier(
+                    namespace="nintendo-game-id",
+                    value="ABCE01",
+                    provenance=provenance,
+                ),
+            ),
+            countries=(
+                LocalMetadataValue(
+                    value="USA",
+                    provenance=provenance,
+                ),
+            ),
+        ),
+    )
+
+    return result
+
+
+def test_plan_rename_help_is_explicitly_non_mutating() -> None:
+    from rom_metadata_framework.cli import (
+        build_parser,
+    )
+
+    parser = build_parser()
+    help_text = parser.format_help()
+
+    assert "plan-rename" in help_text
+    assert "non-mutating" in help_text
+
+
+def test_plan_rename_safe_text_without_network(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    from rom_metadata_framework import cli
+    from rom_metadata_framework.identification import (
+        IdentificationVerification,
+    )
+    from rom_metadata_framework.verification import (
+        VerificationReport,
+        VerificationStatus,
+    )
+
+    path = tmp_path / "input.rvz"
+    path.write_bytes(b"x")
+
+    result = _plan_rename_result()
+
+    monkeypatch.setattr(
+        cli,
+        "_run_identification_workflow",
+        lambda *args, **kwargs: (
+            result,
+            None,
+        ),
+    )
+
+    monkeypatch.setattr(
+        cli,
+        "verify_identification",
+        lambda value: IdentificationVerification(
+            physical=VerificationReport(
+                status=VerificationStatus.KNOWN_GOOD,
+            ),
+        ),
+    )
+
+    rc = cli.main(
+        [
+            "plan-rename",
+            str(path),
+        ]
+    )
+
+    captured = capsys.readouterr()
+
+    assert rc == cli.EXIT_OK
+    assert (
+        "Proposed filename: "
+        "Example Game [ABCE01] (USA).rvz"
+        in captured.out
+    )
+    assert "Operation: copy" in captured.out
+    assert "Safe to apply: yes" in captured.out
+
+
+def test_plan_rename_safe_json_without_network(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    import json
+
+    from rom_metadata_framework import cli
+    from rom_metadata_framework.identification import (
+        IdentificationVerification,
+    )
+    from rom_metadata_framework.verification import (
+        VerificationReport,
+        VerificationStatus,
+    )
+
+    path = tmp_path / "input.rvz"
+    path.write_bytes(b"x")
+
+    result = _plan_rename_result()
+
+    monkeypatch.setattr(
+        cli,
+        "_run_identification_workflow",
+        lambda *args, **kwargs: (
+            result,
+            None,
+        ),
+    )
+
+    monkeypatch.setattr(
+        cli,
+        "verify_identification",
+        lambda value: IdentificationVerification(
+            physical=VerificationReport(
+                status=VerificationStatus.KNOWN_GOOD,
+            ),
+        ),
+    )
+
+    rc = cli.main(
+        [
+            "plan-rename",
+            str(path),
+            "--json",
+        ]
+    )
+
+    payload = json.loads(
+        capsys.readouterr().out
+    )
+
+    assert rc == cli.EXIT_OK
+    assert (
+        payload["destination_name"]
+        == "Example Game [ABCE01] (USA).rvz"
+    )
+    assert payload["operation"] == "copy"
+    assert payload["safe_to_apply"] is True
+    assert payload["status"] == "safe"
+
+
+def test_plan_rename_unresolved_without_canonical_match(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    from rom_metadata_framework import cli
+    from rom_metadata_framework.detection import (
+        PlatformDetection,
+    )
+    from rom_metadata_framework.identification import (
+        IdentificationResult,
+    )
+    from rom_metadata_framework.identity import (
+        RomIdentity,
+    )
+
+    path = tmp_path / "input.bin"
+    path.write_bytes(b"x")
+
+    result = IdentificationResult(
+        physical_identity=RomIdentity(
+            file_name="input.bin",
+            file_size=1,
+        ),
+        platform_detection=PlatformDetection(),
+    )
+
+    monkeypatch.setattr(
+        cli,
+        "_run_identification_workflow",
+        lambda *args, **kwargs: (
+            result,
+            None,
+        ),
+    )
+
+    rc = cli.main(
+        [
+            "plan-rename",
+            str(path),
+        ]
+    )
+
+    captured = capsys.readouterr()
+
+    assert rc == cli.EXIT_UNRESOLVED
+    assert (
+        "Proposed filename: unavailable"
+        in captured.out
+    )
+    assert "Safe to apply: no" in captured.out
+
+
+def test_plan_rename_inconclusive_verification_returns_unresolved(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    from rom_metadata_framework import cli
+    from rom_metadata_framework.identification import (
+        IdentificationVerification,
+    )
+    from rom_metadata_framework.verification import (
+        VerificationReport,
+        VerificationStatus,
+    )
+
+    path = tmp_path / "input.rvz"
+    path.write_bytes(b"x")
+
+    result = _plan_rename_result()
+
+    monkeypatch.setattr(
+        cli,
+        "_run_identification_workflow",
+        lambda *args, **kwargs: (
+            result,
+            None,
+        ),
+    )
+
+    monkeypatch.setattr(
+        cli,
+        "verify_identification",
+        lambda value: IdentificationVerification(
+            physical=VerificationReport(
+                status=VerificationStatus.CATALOGUE_MATCH,
+            ),
+        ),
+    )
+
+    rc = cli.main(
+        [
+            "plan-rename",
+            str(path),
+            "--json",
+        ]
+    )
+
+    import json
+
+    payload = json.loads(
+        capsys.readouterr().out
+    )
+
+    assert rc == cli.EXIT_UNRESOLVED
+    assert payload["status"] == "unsafe"
+    assert payload["safe_to_apply"] is False
+    assert payload["destination_name"]
+
+
+def test_plan_rename_known_bad_returns_conflict(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    from rom_metadata_framework import cli
+    from rom_metadata_framework.identification import (
+        IdentificationVerification,
+    )
+    from rom_metadata_framework.verification import (
+        VerificationReport,
+        VerificationStatus,
+    )
+
+    path = tmp_path / "input.rvz"
+    path.write_bytes(b"x")
+
+    result = _plan_rename_result()
+
+    monkeypatch.setattr(
+        cli,
+        "_run_identification_workflow",
+        lambda *args, **kwargs: (
+            result,
+            None,
+        ),
+    )
+
+    monkeypatch.setattr(
+        cli,
+        "verify_identification",
+        lambda value: IdentificationVerification(
+            physical=VerificationReport(
+                status=VerificationStatus.KNOWN_BAD,
+            ),
+        ),
+    )
+
+    rc = cli.main(
+        [
+            "plan-rename",
+            str(path),
+            "--json",
+        ]
+    )
+
+    import json
+
+    payload = json.loads(
+        capsys.readouterr().out
+    )
+
+    assert rc == cli.EXIT_CONFLICT
+    assert payload["status"] == "conflict"
+    assert payload["safe_to_apply"] is False
+
+
+def test_plan_rename_no_normalize_passes_none(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from rom_metadata_framework import cli
+    from rom_metadata_framework.identification import (
+        IdentificationVerification,
+    )
+
+    path = tmp_path / "input.rvz"
+    path.write_bytes(b"x")
+
+    observed = {}
+
+    def fake_workflow(
+        path,
+        *,
+        as_json,
+        normalize,
+        conflict_context,
+    ):
+        observed["normalize"] = normalize
+        return (
+            _plan_rename_result(),
+            None,
+        )
+
+    monkeypatch.setattr(
+        cli,
+        "_run_identification_workflow",
+        fake_workflow,
+    )
+
+    monkeypatch.setattr(
+        cli,
+        "verify_identification",
+        lambda value: IdentificationVerification(),
+    )
+
+    rc = cli.main(
+        [
+            "plan-rename",
+            str(path),
+            "--no-normalize",
+        ]
+    )
+
+    assert observed["normalize"] is False
+    assert rc == cli.EXIT_UNRESOLVED
