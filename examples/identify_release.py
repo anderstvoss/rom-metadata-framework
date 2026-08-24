@@ -68,9 +68,9 @@ def main() -> int:
     verification = verify_identification(result)
     print(f"safe for canonical naming: {verification.safe_for_canonical_naming}")
 
-    plan = NamingPolicy().plan_rename(
+    plan = NamingPolicy().plan_identification_rename(
         args.path.name,
-        canonical,
+        result,
         verification=verification,
     )
 

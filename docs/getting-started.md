@@ -154,7 +154,11 @@ claiming that the exact physical representation is known-good.
 
 ## Plan a canonical filename
 
-Naming is based on canonical release identity, not descriptive metadata.
+Naming does not consume enriched descriptive metadata.
+
+The legacy release-name-based API remains available through
+`NamingPolicy.plan_rename()`. For identification-aware structured naming, use
+`plan_identification_rename()`:
 
 ~~~python
 from rom_metadata_framework import NamingPolicy
@@ -164,9 +168,9 @@ canonical = result.canonical_match
 if canonical is not None:
     verification = verify_identification(result)
 
-    plan = NamingPolicy().plan_rename(
+    plan = NamingPolicy().plan_identification_rename(
         "original-file.rom",
-        canonical,
+        result,
         verification=verification,
     )
 
@@ -174,6 +178,13 @@ if canonical is not None:
     print(plan.safe_to_apply)
     print(plan.operation)
 ~~~
+
+Structured naming can use an explicitly supplied clean canonical title together
+with agreeing artifact-local evidence such as a platform-native identifier,
+country/region, and non-default revision.
+
+When a provider supplies only a release name, that release name is preserved
+rather than heuristically parsed for title, region, language, or revision.
 
 The default operation is `copy`. The framework returns a plan; it does not
 perform the filesystem mutation.
