@@ -8,6 +8,14 @@ yet. Versioning and release expectations are documented in
 
 ## [Unreleased]
 
+- Add `--progress` and `--verbose` observability to `identify`, `plan-rename`,
+  `rename`, and `verify`. Progress is emitted on standard error, preserving
+  clean result/JSON standard output; live terminal mode uses a single-line
+  throbber while verbose mode reports timed workflow stages.
+- Expose progress from the actual identification pipeline boundaries, including
+  physical hashing, detection, provider lookup, structural inspection,
+  normalization, normalized lookup, and reconciliation when those stages run.
+
 - Add directed platform and platform-native identity selection across
   `inspect`, `identify`, `plan-rename`, `rename`, and `verify`, with soft
   preferred routing by default and hard compute-saving `--restrict` semantics.

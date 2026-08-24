@@ -92,6 +92,12 @@ rom-metadata inspect game.iso
 # Whole-file hashing plus standard release identification.
 rom-metadata identify game.iso
 
+# Show a live single-line coarse-stage indicator on stderr.
+rom-metadata identify game.iso --progress
+
+# Show timed multiline identification stages on stderr.
+rom-metadata identify game.iso --verbose
+
 # Show available physical-file and represented-content hashes.
 rom-metadata identify game.iso --hashes
 
@@ -128,8 +134,11 @@ identification can remain useful when the catalogue provider has no match or is
 temporarily unavailable.
 
 `identify`, `plan-rename`, `rename`, and `verify` may perform network requests
-through Playmatch and may invoke optional normalization backends. `inspect`
-remains bounded and local.
+through Playmatch and may invoke optional normalization backends. These
+identification-based commands also accept `--progress` for a live coarse-stage
+indicator or `--verbose` for timed multiline stage reporting. Progress/status
+output is written to standard error, so `--json` standard output remains
+machine-readable. `inspect` remains bounded and local.
 
 Path-oriented commands support directed platform/identity selection.
 `--platform` and `--identity PLATFORM:ID` are soft preferences by default:

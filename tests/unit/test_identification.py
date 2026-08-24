@@ -2825,3 +2825,47 @@ def test_soft_identity_without_native_id_is_unresolved(
         result.requested_identity.status
         is RequestedIdentityStatus.UNRESOLVED
     )
+
+
+def test_identification_progress_reports_real_stage_order(
+    tmp_path,
+) -> None:
+    path = tmp_path / "progress.bin"
+    path.write_bytes(b"progress-test")
+
+    class Detector:
+        def detect(self, candidate):
+            from rom_metadata_framework.detection import (
+                PlatformDetection,
+            )
+
+            assert candidate == path
+            return PlatformDetection()
+
+    class Resolver:
+        name = "test"
+
+        def identify(self, identity):
+            return None
+
+        def identify_lookup(self, lookup):
+            raise AssertionError(
+                "normalized lookup should not run"
+            )
+
+    stages = []
+
+    result = identify_file(
+        path,
+        detector=Detector(),
+        resolver=Resolver(),
+        progress=stages.append,
+    )
+
+    assert result is not None
+    assert stages == [
+        "Hashing physical file",
+        "Detecting platform",
+        "Looking up physical file",
+        "Reconciling evidence",
+    ]
