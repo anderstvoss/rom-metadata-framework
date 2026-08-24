@@ -117,12 +117,9 @@ class PlaymatchResolver:
                 "matched Playmatch response is missing platform name"
             )
 
-        try:
-            platform_name = canonical_platform_name(
-                provider_platform_name
-            )
-        except UnknownPlatformError:
-            platform_name = provider_platform_name
+        platform_name = self._canonical_platform_name(
+            provider_platform_name
+        )
 
         external_ids = self._external_ids(payload)
         external_ids["playmatch"] = game_id.strip()
@@ -347,6 +344,48 @@ class PlaymatchResolver:
             )
 
         return tuple(results)
+
+    @staticmethod
+    def _canonical_platform_name(
+        provider_name: str,
+    ) -> str:
+        """Canonicalize a Playmatch platform display name when possible.
+
+        Playmatch platform names may use catalogue-style vendor prefixes,
+        such as ``Nintendo - NES`` or ``Microsoft - Xbox 360``. Try the
+        complete provider name first so ordinary framework aliases retain
+        precedence, then conservatively retry the suffix after one
+        ``" - "`` separator.
+
+        Unknown platforms remain provider-defined rather than being guessed.
+        """
+
+        try:
+            return canonical_platform_name(
+                provider_name
+            )
+        except UnknownPlatformError:
+            pass
+
+        separator = " - "
+
+        if separator in provider_name:
+            _, suffix = provider_name.split(
+                separator,
+                1,
+            )
+
+            suffix = suffix.strip()
+
+            if suffix:
+                try:
+                    return canonical_platform_name(
+                        suffix
+                    )
+                except UnknownPlatformError:
+                    pass
+
+        return provider_name
 
     @staticmethod
     def _platform_name(payload: dict[str, Any]) -> str | None:

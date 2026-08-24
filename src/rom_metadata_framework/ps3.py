@@ -492,7 +492,7 @@ class Ps3PlatformDetector:
         return PlatformDetection(
             candidates=(
                 PlatformCandidate(
-                    platform="playstation-3",
+                    platform="ps3",
                     confidence=100,
                     evidence=(evidence,),
                 ),
@@ -603,7 +603,7 @@ class Ps3StructuralInspector:
                 },
             ),
             local_metadata=LocalContentMetadata(
-                platform="playstation-3",
+                platform="ps3",
                 titles=tuple(values),
                 identifiers=(
                     LocalIdentifier(

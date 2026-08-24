@@ -388,7 +388,7 @@ def test_detector_identifies_nsp(
     assert detection.best is not None
     assert (
         detection.best.platform
-        == "nintendo-switch"
+        == "switch"
     )
     assert (
         detection.best.confidence
@@ -414,7 +414,7 @@ def test_detector_identifies_xci(
     assert detection.best is not None
     assert (
         detection.best.platform
-        == "nintendo-switch"
+        == "switch"
     )
     assert (
         detection.best.evidence[0].value
@@ -453,7 +453,7 @@ def test_inspector_preserves_nsp_application_metadata(
     assert local is not None
     assert (
         local.platform
-        == "nintendo-switch"
+        == "switch"
     )
 
     values = {

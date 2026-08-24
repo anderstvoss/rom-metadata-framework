@@ -15,11 +15,12 @@ def test_platforms_text_output(
     output = capsys.readouterr().out
 
     assert (
-        "PLATFORM\tSTATUS\tDETECT"
+        "PLATFORM\tDISPLAY_NAME\tMANUFACTURER"
+        "\tSTATUS\tDETECT"
         in output
     )
-    assert "nintendo-switch" in output
-    assert "playstation-3" in output
+    assert "switch" in output
+    assert "ps3" in output
     assert "snes" in output
 
 
@@ -44,7 +45,7 @@ def test_platforms_json_output(
 
     assert (
         by_platform[
-            "nintendo-switch"
+            "switch"
         ]["status"]
         == "supported"
     )
@@ -65,7 +66,7 @@ def test_platforms_json_output(
 
     assert (
         by_platform[
-            "nintendo-switch"
+            "switch"
         ]["rcheevos_mapping"]
         is False
     )
@@ -258,7 +259,7 @@ def test_inspect_success_with_structural_metadata(
 
     assert (
         payload["detected_platform"]
-        == "playstation-2"
+        == "ps2"
     )
 
     assert payload["inspection"] is not None
@@ -305,7 +306,7 @@ def test_inspect_success_text_output(
 
     assert f"path: {path}" in output
     assert (
-        "detected platform: playstation-2"
+        "detected platform: ps2"
         in output
     )
     assert (
@@ -392,7 +393,7 @@ def _fake_identification_result(
     )
 
     candidate = SimpleNamespace(
-        platform="playstation-2",
+        platform="ps2",
     )
 
     detection = SimpleNamespace(
@@ -403,7 +404,7 @@ def _fake_identification_result(
     canonical = (
         CanonicalReleaseIdentity(
             release_name="Synthetic Release",
-            platform="playstation-2",
+            platform="ps2",
             source="synthetic-provider",
             source_id="synthetic-release-1",
         )
@@ -479,7 +480,7 @@ def test_identify_success_text_without_network(
 
     output = capsys.readouterr().out
 
-    assert "detected platform: playstation-2" in output
+    assert "detected platform: ps2" in output
     assert "canonical release: Synthetic Release" in output
     assert "identified: yes" in output
     assert "physical provider match: yes" in output
@@ -520,7 +521,7 @@ def test_identify_success_json_without_network(
     assert payload["identified"] is True
     assert (
         payload["detected_platform"]
-        == "playstation-2"
+        == "ps2"
     )
     assert (
         payload["canonical_match"][
@@ -1014,7 +1015,7 @@ def _verification_identity(
 
     return CanonicalReleaseIdentity(
         release_name="Synthetic Release",
-        platform="playstation-2",
+        platform="ps2",
         source="synthetic-provider",
         source_id="synthetic-release-1",
         catalogue_evidence=evidence,
@@ -1406,7 +1407,7 @@ def test_verify_probable_returns_unresolved(
 
     identity = CanonicalReleaseIdentity(
         release_name="Synthetic Release",
-        platform="playstation-2",
+        platform="ps2",
         source="synthetic-provider",
         source_id="synthetic-release-1",
         evidence=(
@@ -1590,7 +1591,7 @@ def test_identification_payload_uses_explicit_projection() -> None:
     assert payload["platform_detection"] == {
         "candidates": [
             {
-                "platform": "playstation-2",
+                "platform": "ps2",
                 "confidence": None,
                 "evidence": [],
             },
@@ -1614,7 +1615,7 @@ def test_explicit_canonical_projection_ignores_extra_attributes() -> None:
 
     value = SimpleNamespace(
         release_name="Synthetic Release",
-        platform="playstation-2",
+        platform="ps2",
         source="synthetic-provider",
         source_id="synthetic-release-1",
         title=None,
@@ -1722,5 +1723,5 @@ def test_inspection_payload_uses_explicit_projection(
         payload["inspection"][
             "local_metadata"
         ]["platform"]
-        == "playstation-2"
+        == "ps2"
     )

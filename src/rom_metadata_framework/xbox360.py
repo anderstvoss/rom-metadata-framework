@@ -277,7 +277,7 @@ class Xbox360PlatformDetector:
         return PlatformDetection(
             candidates=(
                 PlatformCandidate(
-                    platform="xbox-360",
+                    platform="xbox360",
                     confidence=100,
                     evidence=(evidence,),
                 ),
@@ -331,7 +331,7 @@ class Xbox360StructuralInspector:
                 },
             ),
             local_metadata=LocalContentMetadata(
-                platform="xbox-360",
+                platform="xbox360",
                 identifiers=(
                     LocalIdentifier(
                         namespace="xbox360-title-id",

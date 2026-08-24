@@ -118,7 +118,7 @@ def test_dolphin_identity_preserves_legacy_positional_arguments() -> None:
     )
 
     result = DolphinDiscIdentity(
-        "gamecube",
+        "gc",
         "rvz",
         "GALE01",
         2,
@@ -200,7 +200,7 @@ def test_dolphin_representation_cannot_be_overridden() -> None:
 
     with pytest.raises(TypeError):
         DolphinDiscIdentity(
-            platform="gamecube",
+            platform="gc",
             format="rvz",
             game_id="GALE01",
             revision=2,

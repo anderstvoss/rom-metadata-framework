@@ -179,7 +179,7 @@ class Ps2PlatformDetector:
         return PlatformDetection(
             candidates=(
                 PlatformCandidate(
-                    platform="playstation-2",
+                    platform="ps2",
                     confidence=100,
                     evidence=(evidence,),
                 ),
@@ -242,7 +242,7 @@ class Ps2StructuralInspector:
         )
 
         local_metadata = LocalContentMetadata(
-            platform="playstation-2",
+            platform="ps2",
             identifiers=identifiers,
             boot={
                 "path": metadata.boot_path,

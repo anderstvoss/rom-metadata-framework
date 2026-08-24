@@ -181,4 +181,4 @@ def test_adapter_for_platform_accepts_common_alias() -> None:
     adapter = adapter_for_platform("gba")
 
     assert adapter.console_id == 5
-    assert adapter.platform == "game-boy-advance"
+    assert adapter.platform == "gba"

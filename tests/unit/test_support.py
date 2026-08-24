@@ -36,13 +36,13 @@ def test_current_supported_platforms_are_explicit() -> None:
 
     assert supported == {
         "nes",
-        "gamecube",
+        "gc",
         "wii",
-        "playstation-2",
-        "playstation-3",
+        "ps2",
+        "ps3",
         "xbox",
-        "xbox-360",
-        "nintendo-switch",
+        "xbox360",
+        "switch",
     }
 
 
@@ -71,7 +71,7 @@ def test_registry_only_platforms_have_no_runtime_support() -> None:
 def test_external_normalizers_report_backend() -> None:
     assert (
         platform_support(
-            "gamecube"
+            "gc"
         ).normalization_backend
         == "dolphin-tool"
     )
@@ -93,19 +93,19 @@ def test_external_normalizers_report_backend() -> None:
 
 def test_rcheevos_mapping_is_derived_from_registry() -> None:
     assert platform_support(
-        "playstation-2"
+        "ps2"
     ).rcheevos_mapping
 
     assert not platform_support(
-        "playstation-3"
+        "ps3"
     ).rcheevos_mapping
 
     assert not platform_support(
-        "xbox-360"
+        "xbox360"
     ).rcheevos_mapping
 
     assert not platform_support(
-        "nintendo-switch"
+        "switch"
     ).rcheevos_mapping
 
 
@@ -131,3 +131,11 @@ def test_unknown_support_lookup_raises_key_error() -> None:
 
 def test_default_support_inventory_has_no_drift() -> None:
     assert default_support_drift() == ()
+
+
+def test_support_inventory_exposes_platform_presentation_metadata() -> None:
+    support = platform_support("ps3")
+
+    assert support.platform == "ps3"
+    assert support.display_name == "PlayStation 3"
+    assert support.manufacturer == "Sony"

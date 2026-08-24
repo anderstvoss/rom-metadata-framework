@@ -162,7 +162,7 @@ def test_empty_local_metadata_is_empty() -> None:
 
 def test_platform_only_metadata_is_not_empty() -> None:
     assert not LocalContentMetadata(
-        platform="gamecube",
+        platform="gc",
     ).empty
 
 

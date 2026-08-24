@@ -116,7 +116,7 @@ def test_gamecube_disc_identity(tmp_path: Path) -> None:
         temporary_directory=tmp_path,
     ).identify(image)
 
-    assert identity.platform == "gamecube"
+    assert identity.platform == "gc"
     assert identity.format == "rvz"
     assert identity.game_id == "GALE01"
     assert identity.revision == 2
@@ -125,7 +125,7 @@ def test_gamecube_disc_identity(tmp_path: Path) -> None:
 
     local = identity.local_metadata
 
-    assert local.platform == "gamecube"
+    assert local.platform == "gc"
     assert local.titles[0].value == "Super Smash Bros Melee"
     assert local.release_revisions[0].value == "2"
     assert local.regions[0].value == "NTSC-U"
@@ -331,7 +331,7 @@ def test_dolphin_platform_detector_detects_gamecube(
     detection = detector.detect(image)
 
     assert detection.best is not None
-    assert detection.best.platform == "gamecube"
+    assert detection.best.platform == "gc"
     assert detection.best.confidence == 100
 
     evidence = detection.best.evidence[0]

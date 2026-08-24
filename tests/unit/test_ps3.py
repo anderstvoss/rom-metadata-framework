@@ -368,7 +368,7 @@ def test_ps3_detector_uses_sfb_and_sfo_evidence(
     detection = Ps3PlatformDetector().detect(path)
 
     assert detection.best is not None
-    assert detection.best.platform == "playstation-3"
+    assert detection.best.platform == "ps3"
     assert detection.best.confidence == 100
 
     evidence = detection.best.evidence[0]
@@ -395,7 +395,7 @@ def test_ps3_inspector_returns_representation_and_local_metadata(
     local = result.local_metadata
 
     assert local is not None
-    assert local.platform == "playstation-3"
+    assert local.platform == "ps3"
     assert local.identifiers[0].namespace == "ps3-title-id"
     assert local.identifiers[0].value == "BLUS12345"
     assert local.titles[0].value == "Synthetic PS3 Game"

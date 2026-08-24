@@ -19,6 +19,8 @@ class PlatformDefinition:
     """Backend-independent canonical platform definition."""
 
     name: str
+    display_name: str
+    manufacturer: str
     aliases: tuple[str, ...] = ()
 
 
@@ -34,6 +36,8 @@ class BackendPlatformMapping:
 PLATFORMS: tuple[PlatformDefinition, ...] = (
     PlatformDefinition(
         name="snes",
+        display_name="Super Nintendo Entertainment System",
+        manufacturer="Nintendo",
         aliases=(
             "super-nintendo",
             "super-nintendo-entertainment-system",
@@ -41,6 +45,8 @@ PLATFORMS: tuple[PlatformDefinition, ...] = (
     ),
     PlatformDefinition(
         name="genesis",
+        display_name="Sega Genesis / Mega Drive",
+        manufacturer="Sega",
         aliases=(
             "mega-drive",
             "sega-genesis",
@@ -48,96 +54,129 @@ PLATFORMS: tuple[PlatformDefinition, ...] = (
     ),
     PlatformDefinition(
         name="n64",
+        display_name="Nintendo 64",
+        manufacturer="Nintendo",
         aliases=("nintendo-64",),
     ),
     PlatformDefinition(
-        name="game-boy",
+        name="gb",
+        display_name="Game Boy",
+        manufacturer="Nintendo",
         aliases=(
+            "game-boy",
             "gameboy",
-            "gb",
         ),
     ),
     PlatformDefinition(
-        name="game-boy-advance",
+        name="gba",
+        display_name="Game Boy Advance",
+        manufacturer="Nintendo",
         aliases=(
+            "game-boy-advance",
             "gameboy-advance",
-            "gba",
         ),
     ),
     PlatformDefinition(
-        name="game-boy-color",
+        name="gbc",
+        display_name="Game Boy Color",
+        manufacturer="Nintendo",
         aliases=(
+            "game-boy-color",
             "gameboy-color",
-            "gbc",
         ),
     ),
     PlatformDefinition(
         name="nes",
+        display_name="Nintendo Entertainment System",
+        manufacturer="Nintendo",
         aliases=("nintendo-entertainment-system",),
     ),
     PlatformDefinition(
-        name="playstation",
+        name="psx",
+        display_name="PlayStation",
+        manufacturer="Sony",
         aliases=(
+            "playstation",
             "ps1",
-            "psx",
             "sony-playstation",
         ),
     ),
     PlatformDefinition(
-        name="gamecube",
+        name="gc",
+        display_name="Nintendo GameCube",
+        manufacturer="Nintendo",
         aliases=(
+            "gamecube",
             "game-cube",
             "nintendo-gamecube",
+            "gcn",
+            "ngc",
         ),
     ),
     PlatformDefinition(
-        name="nintendo-ds",
+        name="nds",
+        display_name="Nintendo DS",
+        manufacturer="Nintendo",
         aliases=(
-            "nds",
+            "nintendo-ds",
             "ds",
         ),
     ),
     PlatformDefinition(
         name="wii",
+        display_name="Wii",
+        manufacturer="Nintendo",
         aliases=("nintendo-wii",),
     ),
     PlatformDefinition(
-        name="playstation-2",
+        name="ps2",
+        display_name="PlayStation 2",
+        manufacturer="Sony",
         aliases=(
-            "ps2",
+            "playstation-2",
             "sony-playstation-2",
         ),
     ),
     PlatformDefinition(
-        name="playstation-3",
+        name="ps3",
+        display_name="PlayStation 3",
+        manufacturer="Sony",
         aliases=(
-            "ps3",
+            "playstation-3",
             "sony-playstation-3",
         ),
     ),
     PlatformDefinition(
         name="xbox",
+        display_name="Xbox",
+        manufacturer="Microsoft",
         aliases=(
             "original-xbox",
             "xbox-original",
         ),
     ),
     PlatformDefinition(
-        name="xbox-360",
+        name="xbox360",
+        display_name="Xbox 360",
+        manufacturer="Microsoft",
         aliases=(
-            "xbox360",
+            "xbox-360",
             "xbox-360-console",
         ),
     ),
     PlatformDefinition(
-        name="nintendo-switch",
+        name="switch",
+        display_name="Nintendo Switch",
+        manufacturer="Nintendo",
         aliases=(
-            "switch",
+            "nintendo-switch",
             "nintendo-switch-console",
         ),
     ),
     PlatformDefinition(
         name="psp",
+        display_name="PlayStation Portable",
+        manufacturer="Sony",
         aliases=(
             "playstation-portable",
             "sony-psp",
@@ -150,15 +189,15 @@ BACKEND_PLATFORM_MAPPINGS: tuple[BackendPlatformMapping, ...] = (
     BackendPlatformMapping("rcheevos", "genesis", 1),
     BackendPlatformMapping("rcheevos", "n64", 2),
     BackendPlatformMapping("rcheevos", "snes", 3),
-    BackendPlatformMapping("rcheevos", "game-boy", 4),
-    BackendPlatformMapping("rcheevos", "game-boy-advance", 5),
-    BackendPlatformMapping("rcheevos", "game-boy-color", 6),
+    BackendPlatformMapping("rcheevos", "gb", 4),
+    BackendPlatformMapping("rcheevos", "gba", 5),
+    BackendPlatformMapping("rcheevos", "gbc", 6),
     BackendPlatformMapping("rcheevos", "nes", 7),
-    BackendPlatformMapping("rcheevos", "playstation", 12),
-    BackendPlatformMapping("rcheevos", "gamecube", 16),
-    BackendPlatformMapping("rcheevos", "nintendo-ds", 18),
+    BackendPlatformMapping("rcheevos", "psx", 12),
+    BackendPlatformMapping("rcheevos", "gc", 16),
+    BackendPlatformMapping("rcheevos", "nds", 18),
     BackendPlatformMapping("rcheevos", "wii", 19),
-    BackendPlatformMapping("rcheevos", "playstation-2", 21),
+    BackendPlatformMapping("rcheevos", "ps2", 21),
     BackendPlatformMapping("rcheevos", "xbox", 22),
     BackendPlatformMapping("rcheevos", "psp", 41),
 )
@@ -260,6 +299,18 @@ def canonical_platform_name(value: str) -> str:
     """Return the canonical framework platform name."""
 
     return resolve_platform(value).name
+
+
+def platform_display_name(value: str) -> str:
+    """Return the human-readable name for a platform."""
+
+    return resolve_platform(value).display_name
+
+
+def platform_manufacturer(value: str) -> str:
+    """Return the manufacturer associated with a platform."""
+
+    return resolve_platform(value).manufacturer
 
 
 def backend_platform_mapping(

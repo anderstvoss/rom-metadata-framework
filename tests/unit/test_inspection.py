@@ -41,7 +41,7 @@ def result() -> StructuralInspectionResult:
             format="iso9660",
         ),
         local_metadata=LocalContentMetadata(
-            platform="playstation-2",
+            platform="ps2",
         ),
     )
 
