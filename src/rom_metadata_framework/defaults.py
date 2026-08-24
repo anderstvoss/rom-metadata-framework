@@ -22,6 +22,7 @@ from .ps3 import (
     Ps3StructuralInspector,
 )
 from .routing import CompositeNormalizer
+from .selection import IdentificationSelection
 from .switch import (
     NintendoSwitchPlatformDetector,
     NintendoSwitchStructuralInspector,
@@ -97,6 +98,8 @@ DEFAULT_RUNTIME_CONFIG = DefaultRuntimeConfig()
 
 def build_default_detector(
     config: DefaultRuntimeConfig = DEFAULT_RUNTIME_CONFIG,
+    *,
+    selection: IdentificationSelection | None = None,
 ) -> CompositePlatformDetector:
     """Build the standard platform detector composition."""
 
@@ -116,12 +119,24 @@ def build_default_detector(
             XboxPlatformDetector(
                 executable=config.xbox_executable,
             ),
-        )
+        ),
+        preferred_platform=(
+            selection.effective_platform
+            if selection is not None
+            else None
+        ),
+        restrict_platform=(
+            selection.restrict
+            if selection is not None
+            else False
+        ),
     )
 
 
 def build_default_inspector(
     config: DefaultRuntimeConfig = DEFAULT_RUNTIME_CONFIG,
+    *,
+    selection: IdentificationSelection | None = None,
 ) -> CompositeStructuralInspector:
     """Build the standard non-normalizing structural inspector."""
 
@@ -140,12 +155,24 @@ def build_default_inspector(
             Xbox360StructuralInspector(),
             NintendoSwitchStructuralInspector(),
             XboxStructuralInspector(),
-        )
+        ),
+        preferred_platform=(
+            selection.effective_platform
+            if selection is not None
+            else None
+        ),
+        restrict_platform=(
+            selection.restrict
+            if selection is not None
+            else False
+        ),
     )
 
 
 def build_default_normalizer(
     config: DefaultRuntimeConfig = DEFAULT_RUNTIME_CONFIG,
+    *,
+    selection: IdentificationSelection | None = None,
 ) -> CompositeNormalizer:
     """Build the standard normalized-content adapter router.
 
@@ -175,7 +202,17 @@ def build_default_normalizer(
                     config.xbox_temporary_directory
                 ),
             ),
-        )
+        ),
+        preferred_platform=(
+            selection.effective_platform
+            if selection is not None
+            else None
+        ),
+        restrict_platform=(
+            selection.restrict
+            if selection is not None
+            else False
+        ),
     )
 
 

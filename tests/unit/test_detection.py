@@ -204,3 +204,259 @@ def test_composite_platform_detector_merges_same_platform_evidence(
     assert candidate.platform == "nes"
     assert candidate.confidence == 95
     assert tuple(evidence.source for evidence in candidate.evidence) == ("one", "two")
+
+
+def test_composite_detector_restricts_invoked_platforms(
+    tmp_path,
+) -> None:
+    from rom_metadata_framework.detection import (
+        CompositePlatformDetector,
+        PlatformCandidate,
+        PlatformDetection,
+    )
+
+    calls = []
+
+    class Detector:
+        def __init__(self, name):
+            self.name = name
+
+        def detect(self, path):
+            calls.append(self.name)
+            return PlatformDetection(
+                candidates=(
+                    PlatformCandidate(
+                        platform=self.name,
+                        confidence=100,
+                    ),
+                )
+            )
+
+    path = tmp_path / "game.bin"
+    path.write_bytes(b"x")
+
+    detector = CompositePlatformDetector(
+        (
+            Detector("ps3"),
+            Detector("wii"),
+            Detector("xbox360"),
+        )
+    )
+
+    result = detector.detect(
+        path,
+        preferred_platform="wii",
+        restrict_platform=True,
+    )
+
+    assert calls == ["wii"]
+    assert tuple(
+        candidate.platform
+        for candidate in result.candidates
+    ) == ("wii",)
+
+
+def test_composite_detector_soft_hint_runs_platform_first(
+    tmp_path,
+) -> None:
+    from rom_metadata_framework.detection import (
+        CompositePlatformDetector,
+        PlatformDetection,
+    )
+
+    calls = []
+
+    class Detector:
+        def __init__(self, name):
+            self.name = name
+
+        def detect(self, path):
+            calls.append(self.name)
+            return PlatformDetection()
+
+    path = tmp_path / "game.bin"
+    path.write_bytes(b"x")
+
+    detector = CompositePlatformDetector(
+        (
+            Detector("ps3"),
+            Detector("wii"),
+            Detector("xbox360"),
+        )
+    )
+
+    detector.detect(
+        path,
+        preferred_platform="wii",
+    )
+
+    assert calls == [
+        "wii",
+        "ps3",
+        "xbox360",
+    ]
+
+
+def test_soft_hint_short_circuits_after_requested_platform_matches(
+    tmp_path,
+) -> None:
+    from rom_metadata_framework.detection import (
+        CompositePlatformDetector,
+        PlatformCandidate,
+        PlatformDetection,
+    )
+
+    calls = []
+
+    class Detector:
+        def __init__(
+            self,
+            name,
+            matched_platform=None,
+        ):
+            self.name = name
+            self.matched_platform = matched_platform
+
+        def detect(self, path):
+            calls.append(self.name)
+
+            if self.matched_platform is None:
+                return PlatformDetection()
+
+            return PlatformDetection(
+                candidates=(
+                    PlatformCandidate(
+                        platform=self.matched_platform,
+                        confidence=100,
+                    ),
+                )
+            )
+
+    path = tmp_path / "game.bin"
+    path.write_bytes(b"x")
+
+    detector = CompositePlatformDetector(
+        (
+            Detector("ps3", "ps3"),
+            Detector("dolphin", "wii"),
+            Detector("xbox360", "xbox360"),
+        )
+    )
+
+    result = detector.detect(
+        path,
+        preferred_platform="wii",
+    )
+
+    assert calls == ["dolphin"]
+    assert result.best is not None
+    assert result.best.platform == "wii"
+
+
+def test_soft_hint_falls_back_when_requested_platform_does_not_match(
+    tmp_path,
+) -> None:
+    from rom_metadata_framework.detection import (
+        CompositePlatformDetector,
+        PlatformCandidate,
+        PlatformDetection,
+    )
+
+    calls = []
+
+    class Detector:
+        def __init__(
+            self,
+            name,
+            matched_platform=None,
+        ):
+            self.name = name
+            self.matched_platform = matched_platform
+
+        def detect(self, path):
+            calls.append(self.name)
+
+            if self.matched_platform is None:
+                return PlatformDetection()
+
+            return PlatformDetection(
+                candidates=(
+                    PlatformCandidate(
+                        platform=self.matched_platform,
+                        confidence=100,
+                    ),
+                )
+            )
+
+    path = tmp_path / "game.bin"
+    path.write_bytes(b"x")
+
+    detector = CompositePlatformDetector(
+        (
+            Detector("ps3", "ps3"),
+            Detector("dolphin"),
+            Detector("xbox360"),
+        )
+    )
+
+    result = detector.detect(
+        path,
+        preferred_platform="wii",
+    )
+
+    assert calls == [
+        "dolphin",
+        "ps3",
+        "xbox360",
+    ]
+    assert result.best is not None
+    assert result.best.platform == "ps3"
+
+
+def test_configured_detector_uses_platform_hint_without_call_kwargs(
+    tmp_path,
+) -> None:
+    from rom_metadata_framework.detection import (
+        CompositePlatformDetector,
+        PlatformCandidate,
+        PlatformDetection,
+    )
+
+    calls = []
+
+    class Detector:
+        def __init__(self, name, platform=None):
+            self.name = name
+            self.platform = platform
+
+        def detect(self, path):
+            calls.append(self.name)
+
+            if self.platform is None:
+                return PlatformDetection()
+
+            return PlatformDetection(
+                candidates=(
+                    PlatformCandidate(
+                        platform=self.platform,
+                        confidence=100,
+                    ),
+                )
+            )
+
+    path = tmp_path / "game.bin"
+    path.write_bytes(b"x")
+
+    detector = CompositePlatformDetector(
+        (
+            Detector("ps3", "ps3"),
+            Detector("dolphin", "wii"),
+        ),
+        preferred_platform="wii",
+    )
+
+    result = detector.detect(path)
+
+    assert calls == ["dolphin"]
+    assert result.best is not None
+    assert result.best.platform == "wii"

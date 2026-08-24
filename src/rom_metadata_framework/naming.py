@@ -272,9 +272,14 @@ class RenamePlan:
     representation_known_good: bool = False
 
     def __post_init__(self) -> None:
-        if self.operation not in {"copy", "replace"}:
+        if self.operation not in {
+            "copy",
+            "replace",
+            "rename",
+        }:
             raise ValueError(
-                "rename operation must be 'copy' or 'replace'"
+                "rename operation must be "
+                "'copy', 'replace', or 'rename'"
             )
 
 

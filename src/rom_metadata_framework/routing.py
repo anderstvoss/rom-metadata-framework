@@ -12,6 +12,7 @@ from .normalization import (
     NormalizationResult,
     NormalizerProbe,
 )
+from .selection import component_supports_platform
 
 
 class NormalizerRoutingError(RuntimeError):
@@ -106,6 +107,9 @@ class CompositeNormalizer:
     def __init__(
         self,
         normalizers: Sequence[RoutedNormalizer],
+        *,
+        preferred_platform: str | None = None,
+        restrict_platform: bool = False,
     ) -> None:
         candidates = tuple(normalizers)
 
@@ -122,7 +126,14 @@ class CompositeNormalizer:
                 operation="register",
             )
 
+        if restrict_platform and preferred_platform is None:
+            raise ValueError(
+                "restricted normalizer requires a preferred platform"
+            )
+
         self.normalizers = candidates
+        self.preferred_platform = preferred_platform
+        self.restrict_platform = restrict_platform
 
         names = [
             normalizer.name.strip()
@@ -152,6 +163,9 @@ class CompositeNormalizer:
     def probe_normalizers(
         self,
         path: Path,
+        *,
+        preferred_platform: str | None = None,
+        restrict_platform: bool = False,
     ) -> tuple[
         tuple[RoutedNormalizer, NormalizerProbe],
         ...,
@@ -161,33 +175,96 @@ class CompositeNormalizer:
         path = Path(path)
         results = []
 
-        for normalizer in self.normalizers:
-            probe = normalizer.probe(path)
+        preferred_platform = (
+            preferred_platform
+            if preferred_platform is not None
+            else self.preferred_platform
+        )
+        restrict_platform = (
+            restrict_platform
+            or self.restrict_platform
+        )
 
-            if not isinstance(probe, NormalizerProbe):
-                raise NormalizerContractError(
-                    "normalizer probe() must return NormalizerProbe",
-                    component=normalizer.name,
-                    operation="probe",
-                )
+        preferred_group = ()
+        remaining_group = self.normalizers
 
-            if probe.normalizer != normalizer.name.strip():
-                raise NormalizerContractError(
-                    (
-                        "normalizer probe name does not match "
-                        "registered normalizer name"
-                    ),
-                    component=normalizer.name,
-                    operation="probe",
-                    field="normalizer",
-                )
+        if preferred_platform is not None:
+            from .platforms import canonical_platform_name
 
-            results.append(
-                (
-                    normalizer,
-                    probe,
+            preferred_platform = canonical_platform_name(
+                preferred_platform
+            )
+
+            preferred_group = tuple(
+                normalizer
+                for normalizer in self.normalizers
+                if component_supports_platform(
+                    normalizer.name,
+                    preferred_platform,
                 )
             )
+            remaining_group = tuple(
+                normalizer
+                for normalizer in self.normalizers
+                if normalizer not in preferred_group
+            )
+
+        def probe_group(group):
+            group_results = []
+
+            for normalizer in group:
+                probe = normalizer.probe(path)
+
+                if not isinstance(probe, NormalizerProbe):
+                    raise NormalizerContractError(
+                        "normalizer probe() must return NormalizerProbe",
+                        component=normalizer.name,
+                        operation="probe",
+                    )
+
+                if probe.normalizer != normalizer.name.strip():
+                    raise NormalizerContractError(
+                        (
+                            "normalizer probe name does not match "
+                            "registered normalizer name"
+                        ),
+                        component=normalizer.name,
+                        operation="probe",
+                        field="normalizer",
+                    )
+
+                group_results.append(
+                    (
+                        normalizer,
+                        probe,
+                    )
+                )
+
+            return group_results
+
+        if preferred_group:
+            preferred_results = probe_group(
+                preferred_group
+            )
+            results.extend(preferred_results)
+
+            if any(
+                probe.supported
+                for _, probe in preferred_results
+            ):
+                return tuple(results)
+
+            if restrict_platform:
+                return tuple(results)
+
+        elif restrict_platform:
+            return ()
+
+        results.extend(
+            probe_group(
+                remaining_group
+            )
+        )
 
         return tuple(results)
 

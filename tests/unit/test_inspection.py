@@ -133,3 +133,251 @@ def test_composite_rejects_duplicate_names() -> None:
                 FakeInspector("duplicate", None),
             )
         )
+
+
+def test_structural_inspector_restricts_to_requested_platform(
+    tmp_path,
+) -> None:
+    from rom_metadata_framework.inspection import (
+        CompositeStructuralInspector,
+        StructuralInspectionResult,
+    )
+    from rom_metadata_framework.local_metadata import (
+        LocalContentMetadata,
+    )
+
+    calls = []
+
+    class Inspector:
+        def __init__(
+            self,
+            name,
+            *,
+            matches,
+        ):
+            self.name = name
+            self.matches = matches
+
+        def inspect(self, path):
+            calls.append(self.name)
+
+            if not self.matches:
+                return None
+
+            return StructuralInspectionResult(
+                local_metadata=LocalContentMetadata(
+                    platform=(
+                        "wii"
+                        if self.name == "dolphin"
+                        else self.name
+                    )
+                )
+            )
+
+    path = tmp_path / "game.bin"
+    path.write_bytes(b"x")
+
+    inspector = CompositeStructuralInspector(
+        (
+            Inspector(
+                "ps3",
+                matches=True,
+            ),
+            Inspector(
+                "dolphin",
+                matches=True,
+            ),
+            Inspector(
+                "xbox360",
+                matches=True,
+            ),
+        )
+    )
+
+    result = inspector.inspect(
+        path,
+        preferred_platform="wii",
+        restrict_platform=True,
+    )
+
+    assert calls == ["dolphin"]
+    assert result is not None
+    assert result.local_metadata is not None
+    assert result.local_metadata.platform == "wii"
+
+
+def test_structural_inspector_soft_hint_short_circuits(
+    tmp_path,
+) -> None:
+    from rom_metadata_framework.inspection import (
+        CompositeStructuralInspector,
+        StructuralInspectionResult,
+    )
+    from rom_metadata_framework.local_metadata import (
+        LocalContentMetadata,
+    )
+
+    calls = []
+
+    class Inspector:
+        def __init__(
+            self,
+            name,
+            *,
+            matches,
+        ):
+            self.name = name
+            self.matches = matches
+
+        def inspect(self, path):
+            calls.append(self.name)
+
+            if not self.matches:
+                return None
+
+            return StructuralInspectionResult(
+                local_metadata=LocalContentMetadata(
+                    platform="wii"
+                )
+            )
+
+    path = tmp_path / "game.bin"
+    path.write_bytes(b"x")
+
+    inspector = CompositeStructuralInspector(
+        (
+            Inspector(
+                "ps3",
+                matches=True,
+            ),
+            Inspector(
+                "dolphin",
+                matches=True,
+            ),
+        )
+    )
+
+    result = inspector.inspect(
+        path,
+        preferred_platform="wii",
+    )
+
+    assert calls == ["dolphin"]
+    assert result is not None
+
+
+def test_structural_inspector_soft_hint_falls_back(
+    tmp_path,
+) -> None:
+    from rom_metadata_framework.inspection import (
+        CompositeStructuralInspector,
+        StructuralInspectionResult,
+    )
+    from rom_metadata_framework.local_metadata import (
+        LocalContentMetadata,
+    )
+
+    calls = []
+
+    class Inspector:
+        def __init__(
+            self,
+            name,
+            *,
+            matches,
+        ):
+            self.name = name
+            self.matches = matches
+
+        def inspect(self, path):
+            calls.append(self.name)
+
+            if not self.matches:
+                return None
+
+            return StructuralInspectionResult(
+                local_metadata=LocalContentMetadata(
+                    platform="ps3"
+                )
+            )
+
+    path = tmp_path / "game.bin"
+    path.write_bytes(b"x")
+
+    inspector = CompositeStructuralInspector(
+        (
+            Inspector(
+                "ps3",
+                matches=True,
+            ),
+            Inspector(
+                "dolphin",
+                matches=False,
+            ),
+        )
+    )
+
+    result = inspector.inspect(
+        path,
+        preferred_platform="wii",
+    )
+
+    assert calls == [
+        "dolphin",
+        "ps3",
+    ]
+    assert result is not None
+    assert result.local_metadata is not None
+    assert result.local_metadata.platform == "ps3"
+
+
+def test_configured_inspector_restricts_without_call_kwargs(
+    tmp_path,
+) -> None:
+    from rom_metadata_framework.inspection import (
+        CompositeStructuralInspector,
+        StructuralInspectionResult,
+    )
+    from rom_metadata_framework.local_metadata import (
+        LocalContentMetadata,
+    )
+
+    calls = []
+
+    class Inspector:
+        def __init__(self, name, matches):
+            self.name = name
+            self.matches = matches
+
+        def inspect(self, path):
+            calls.append(self.name)
+
+            if not self.matches:
+                return None
+
+            return StructuralInspectionResult(
+                local_metadata=LocalContentMetadata(
+                    platform=(
+                        "wii"
+                        if self.name == "dolphin"
+                        else self.name
+                    )
+                )
+            )
+
+    path = tmp_path / "game.bin"
+    path.write_bytes(b"x")
+
+    inspector = CompositeStructuralInspector(
+        (
+            Inspector("ps3", True),
+            Inspector("dolphin", True),
+        ),
+        preferred_platform="wii",
+        restrict_platform=True,
+    )
+
+    result = inspector.inspect(path)
+
+    assert calls == ["dolphin"]
+    assert result is not None

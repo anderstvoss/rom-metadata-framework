@@ -33,6 +33,11 @@ from .release_reconciliation import (
 from .representation import RepresentationIdentity
 from .resolvers import ResolverUnavailableError
 from .routing import NoSupportingNormalizerError
+from .selection import (
+    IdentificationSelection,
+    identifiers_equal,
+    local_primary_identifier,
+)
 from .verification import (
     DEFAULT_VERIFICATION_POLICY,
     VerificationPolicy,
@@ -40,6 +45,71 @@ from .verification import (
     VerificationStatus,
     verify_release,
 )
+
+
+class RequestedPlatformUnresolvedError(RuntimeError):
+    """Raised when a hard platform restriction does not match locally."""
+
+    def __init__(
+        self,
+        *,
+        platform: str,
+    ) -> None:
+        self.platform = platform
+
+        super().__init__(
+            "unable to establish restricted platform "
+            f"{platform} from local evidence"
+        )
+
+
+class RequestedIdentityError(RuntimeError):
+    """Base failure while testing a restricted requested identity."""
+
+
+class RequestedIdentityMismatchError(
+    RequestedIdentityError
+):
+    """Raised when local evidence contradicts a restricted identity."""
+
+    def __init__(
+        self,
+        *,
+        platform: str,
+        requested_identifier: str,
+        observed_identifier: str,
+    ) -> None:
+        self.platform = platform
+        self.requested_identifier = requested_identifier
+        self.observed_identifier = observed_identifier
+
+        super().__init__(
+            "requested identity "
+            f"{platform}:{requested_identifier} "
+            "does not match local structural identity "
+            f"{platform}:{observed_identifier}"
+        )
+
+
+class RequestedIdentityUnresolvedError(
+    RequestedIdentityError
+):
+    """Raised when restricted identity cannot be established locally."""
+
+    def __init__(
+        self,
+        *,
+        platform: str,
+        requested_identifier: str,
+    ) -> None:
+        self.platform = platform
+        self.requested_identifier = requested_identifier
+
+        super().__init__(
+            "unable to establish restricted identity "
+            f"{platform}:{requested_identifier} "
+            "from local structural evidence"
+        )
 
 
 class LookupResolver(Protocol):
@@ -99,6 +169,26 @@ class IdentificationTitleSource(StrEnum):
     UNAVAILABLE = "unavailable"
 
 
+
+class RequestedIdentityStatus(StrEnum):
+    """Relationship between a requested identity and observed local evidence."""
+
+    MATCHED = "matched"
+    MISMATCH = "mismatch"
+    UNRESOLVED = "unresolved"
+
+
+@dataclass(frozen=True, slots=True)
+class RequestedIdentityAssessment:
+    """Assessment of one user-supplied platform-native identity."""
+
+    platform: str
+    requested_identifier: str
+    status: RequestedIdentityStatus
+    observed_platform: str | None = None
+    observed_identifier: str | None = None
+
+
 @dataclass(frozen=True, slots=True)
 class ProviderLookupOutcome:
     """Provider availability and match state for one lookup path."""
@@ -125,6 +215,78 @@ class ProviderLookupOutcome:
             ProviderLookupStatus.MATCHED,
             ProviderLookupStatus.NO_MATCH,
         }
+
+
+
+def _assess_requested_identity(
+    *,
+    selection: IdentificationSelection | None,
+    platform_detection: PlatformDetection,
+    local_metadata: LocalContentMetadata | None,
+) -> RequestedIdentityAssessment | None:
+    """Compare a soft requested identity with observed local evidence."""
+
+    if (
+        selection is None
+        or selection.identity is None
+    ):
+        return None
+
+    requested = selection.identity
+    best = platform_detection.best
+
+    if (
+        best is not None
+        and best.platform != requested.platform
+    ):
+        observed_identifier = None
+
+        if local_metadata is not None:
+            observed_identifier = local_primary_identifier(
+                local_metadata,
+                platform=best.platform,
+            )
+
+        return RequestedIdentityAssessment(
+            platform=requested.platform,
+            requested_identifier=requested.identifier,
+            status=RequestedIdentityStatus.MISMATCH,
+            observed_platform=best.platform,
+            observed_identifier=observed_identifier,
+        )
+
+    observed_identifier = local_primary_identifier(
+        local_metadata,
+        platform=requested.platform,
+    )
+
+    if observed_identifier is None:
+        return RequestedIdentityAssessment(
+            platform=requested.platform,
+            requested_identifier=requested.identifier,
+            status=RequestedIdentityStatus.UNRESOLVED,
+            observed_platform=(
+                best.platform
+                if best is not None
+                else None
+            ),
+        )
+
+    return RequestedIdentityAssessment(
+        platform=requested.platform,
+        requested_identifier=requested.identifier,
+        status=(
+            RequestedIdentityStatus.MATCHED
+            if identifiers_equal(
+                observed_identifier,
+                requested.identifier,
+            )
+            else RequestedIdentityStatus.MISMATCH
+        ),
+        observed_platform=requested.platform,
+        observed_identifier=observed_identifier,
+    )
+
 
 
 def _merge_structural_evidence(
@@ -174,6 +336,7 @@ class IdentificationResult:
         ProviderLookupOutcome()
     )
     provider_name: str | None = None
+    requested_identity: RequestedIdentityAssessment | None = None
 
     @property
     def canonical_match(self) -> CanonicalReleaseIdentity | None:
@@ -406,6 +569,7 @@ def identify_file(
     normalizer: ContentNormalizer | None = None,
     inspector: StructuralInspector | None = None,
     force_normalization: bool = False,
+    selection: IdentificationSelection | None = None,
 ) -> IdentificationResult:
     """Identify one file while preserving independent evidence paths.
 
@@ -416,8 +580,107 @@ def identify_file(
 
     path = Path(path)
 
-    physical_identity = GenericHashAdapter().identify(path)
-    platform_detection = detector.detect(path)
+    platform_detection = None
+    inspection_result = None
+
+    restricted_selection = (
+        selection is not None
+        and selection.restrict
+    )
+
+    # Hard restrictions exist to avoid unrelated work. Establish the
+    # requested platform using bounded local detection before hashing or
+    # provider lookup. A restricted identity additionally requires the
+    # platform-native identifier to agree before expensive work begins.
+    if restricted_selection:
+        assert selection is not None
+        assert selection.effective_platform is not None
+
+        requested_platform = (
+            selection.effective_platform
+        )
+
+        platform_detection = detector.detect(
+            path
+        )
+
+        best = platform_detection.best
+
+        if (
+            best is None
+            or best.platform
+            != requested_platform
+        ):
+            if selection.identity is not None:
+                raise RequestedIdentityUnresolvedError(
+                    platform=requested_platform,
+                    requested_identifier=(
+                        selection.identity.identifier
+                    ),
+                )
+
+            raise RequestedPlatformUnresolvedError(
+                platform=requested_platform,
+            )
+
+        if selection.identity is not None:
+            if inspector is None:
+                raise RequestedIdentityUnresolvedError(
+                    platform=requested_platform,
+                    requested_identifier=(
+                        selection.identity.identifier
+                    ),
+                )
+
+            inspection_result = inspector.inspect(
+                path
+            )
+
+            if inspection_result is None:
+                raise RequestedIdentityUnresolvedError(
+                    platform=requested_platform,
+                    requested_identifier=(
+                        selection.identity.identifier
+                    ),
+                )
+
+            observed_identifier = (
+                local_primary_identifier(
+                    inspection_result.local_metadata,
+                    platform=requested_platform,
+                )
+            )
+
+            if observed_identifier is None:
+                raise RequestedIdentityUnresolvedError(
+                    platform=requested_platform,
+                    requested_identifier=(
+                        selection.identity.identifier
+                    ),
+                )
+
+            if not identifiers_equal(
+                observed_identifier,
+                selection.identity.identifier,
+            ):
+                raise RequestedIdentityMismatchError(
+                    platform=requested_platform,
+                    requested_identifier=(
+                        selection.identity.identifier
+                    ),
+                    observed_identifier=(
+                        observed_identifier
+                    ),
+                )
+
+    physical_identity = GenericHashAdapter().identify(
+        path
+    )
+
+    if platform_detection is None:
+        platform_detection = detector.detect(
+            path
+        )
 
     provider_name = str(
         getattr(
@@ -453,7 +716,10 @@ def identify_file(
     normalized_lookup = ProviderLookupOutcome()
 
     if inspector is not None:
-        inspection_result = inspector.inspect(path)
+        if inspection_result is None:
+            inspection_result = inspector.inspect(
+                path
+            )
 
         if inspection_result is not None:
             if not isinstance(
@@ -657,6 +923,14 @@ def identify_file(
         provider_platform=provider_platform,
     )
 
+    requested_identity_assessment = (
+        _assess_requested_identity(
+            selection=selection,
+            platform_detection=platform_detection,
+            local_metadata=local_metadata,
+        )
+    )
+
     return IdentificationResult(
         physical_identity=physical_identity,
         platform_detection=platform_detection,
@@ -670,6 +944,9 @@ def identify_file(
         physical_lookup=physical_lookup,
         normalized_lookup=normalized_lookup,
         provider_name=provider_name,
+        requested_identity=(
+            requested_identity_assessment
+        ),
     )
 
 

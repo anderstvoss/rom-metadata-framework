@@ -469,3 +469,129 @@ def test_composite_rejects_incomplete_normalizer_contract() -> None:
         CompositeNormalizer(
             (IncompleteNormalizer(),)
         )
+
+
+def test_configured_normalizer_soft_hint_short_circuits_probes(
+    tmp_path,
+) -> None:
+    from rom_metadata_framework.capability import (
+        RuntimeCapability,
+        RuntimeCapabilityStatus,
+    )
+    from rom_metadata_framework.normalization import (
+        NormalizerProbe,
+        NormalizerProbeStatus,
+    )
+    from rom_metadata_framework.routing import (
+        CompositeNormalizer,
+    )
+
+    calls = []
+
+    class Normalizer:
+        def __init__(self, name, supported):
+            self.name = name
+            self.supported = supported
+
+        def runtime_capability(self):
+            return RuntimeCapability(
+                name=self.name,
+                status=RuntimeCapabilityStatus.READY,
+            )
+
+        def probe(self, path):
+            calls.append(self.name)
+            return NormalizerProbe(
+                normalizer=self.name,
+                status=(
+                    NormalizerProbeStatus.SUPPORTED
+                    if self.supported
+                    else NormalizerProbeStatus.UNSUPPORTED
+                ),
+            )
+
+        def identify(self, path):
+            raise AssertionError(
+                "identify not needed for routing test"
+            )
+
+    path = tmp_path / "game.bin"
+    path.write_bytes(b"x")
+
+    normalizer = CompositeNormalizer(
+        (
+            Normalizer("nes", True),
+            Normalizer("dolphin", True),
+            Normalizer("xbox", True),
+        ),
+        preferred_platform="wii",
+    )
+
+    selected = normalizer.select(path)
+
+    assert selected.name == "dolphin"
+    assert calls == ["dolphin"]
+
+
+def test_configured_normalizer_restrict_does_not_probe_fallback(
+    tmp_path,
+) -> None:
+    import pytest
+
+    from rom_metadata_framework.capability import (
+        RuntimeCapability,
+        RuntimeCapabilityStatus,
+    )
+    from rom_metadata_framework.normalization import (
+        NormalizerProbe,
+        NormalizerProbeStatus,
+    )
+    from rom_metadata_framework.routing import (
+        CompositeNormalizer,
+        NoSupportingNormalizerError,
+    )
+
+    calls = []
+
+    class Normalizer:
+        def __init__(self, name, supported):
+            self.name = name
+            self.supported = supported
+
+        def runtime_capability(self):
+            return RuntimeCapability(
+                name=self.name,
+                status=RuntimeCapabilityStatus.READY,
+            )
+
+        def probe(self, path):
+            calls.append(self.name)
+            return NormalizerProbe(
+                normalizer=self.name,
+                status=(
+                    NormalizerProbeStatus.SUPPORTED
+                    if self.supported
+                    else NormalizerProbeStatus.UNSUPPORTED
+                ),
+            )
+
+        def identify(self, path):
+            raise AssertionError
+
+    path = tmp_path / "game.bin"
+    path.write_bytes(b"x")
+
+    normalizer = CompositeNormalizer(
+        (
+            Normalizer("nes", True),
+            Normalizer("dolphin", False),
+            Normalizer("xbox", True),
+        ),
+        preferred_platform="wii",
+        restrict_platform=True,
+    )
+
+    with pytest.raises(NoSupportingNormalizerError):
+        normalizer.select(path)
+
+    assert calls == ["dolphin"]

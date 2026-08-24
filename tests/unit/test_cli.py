@@ -2948,8 +2948,10 @@ def test_plan_rename_no_normalize_passes_none(
         as_json,
         normalize,
         conflict_context,
+        selection=None,
     ):
         observed["normalize"] = normalize
+        observed["selection"] = selection
         return (
             _plan_rename_result(),
             None,
@@ -2976,4 +2978,821 @@ def test_plan_rename_no_normalize_passes_none(
     )
 
     assert observed["normalize"] is False
+    assert observed["selection"] is None
     assert rc == cli.EXIT_UNRESOLVED
+
+
+def test_identify_help_exposes_directed_selection(
+    capsys,
+) -> None:
+    import pytest
+
+    from rom_metadata_framework.cli import (
+        build_parser,
+    )
+
+    parser = build_parser()
+
+    with pytest.raises(SystemExit) as exc_info:
+        parser.parse_args(
+            ["identify", "--help"]
+        )
+
+    assert exc_info.value.code == 0
+
+    help_text = capsys.readouterr().out
+
+    assert "--platform PLATFORM" in help_text
+    assert "--identity PLATFORM:ID" in help_text
+    assert "--restrict" in help_text
+
+
+def test_selection_from_values_parses_identity() -> None:
+    from rom_metadata_framework.cli import (
+        _selection_from_values,
+    )
+
+    selection = _selection_from_values(
+        platform=None,
+        identity="wii:RMCE01",
+        restrict=True,
+    )
+
+    assert selection is not None
+    assert selection.platform == "wii"
+    assert selection.identity is not None
+    assert selection.identity.identifier == "RMCE01"
+    assert selection.restrict
+
+
+def test_selection_rejects_restrict_without_hint() -> None:
+    import pytest
+
+    from rom_metadata_framework.cli import (
+        _selection_from_values,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="restrict requires",
+    ):
+        _selection_from_values(
+            platform=None,
+            identity=None,
+            restrict=True,
+        )
+
+
+def test_selection_rejects_platform_identity_disagreement() -> None:
+    import pytest
+
+    from rom_metadata_framework.cli import (
+        _selection_from_values,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="disagree",
+    ):
+        _selection_from_values(
+            platform="ps3",
+            identity="wii:RMCE01",
+            restrict=False,
+        )
+
+
+def test_concise_identity_payload_reports_soft_mismatch() -> None:
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from rom_metadata_framework.cli import (
+        _concise_identification_payload,
+    )
+    from rom_metadata_framework.identification import (
+        RequestedIdentityAssessment,
+        RequestedIdentityStatus,
+    )
+
+    result = SimpleNamespace(
+        canonical_match=None,
+        local_metadata=None,
+        display_title=None,
+        platform_detection=SimpleNamespace(
+            best=SimpleNamespace(
+                platform="ps3"
+            )
+        ),
+        identification_strength=None,
+        title_source=None,
+        physical_representation=None,
+        physical_identity=None,
+        normalized_content=None,
+        provider_name=None,
+        physical_lookup=None,
+        normalized_lookup=None,
+        requested_identity=RequestedIdentityAssessment(
+            platform="wii",
+            requested_identifier="RMCE01",
+            status=RequestedIdentityStatus.MISMATCH,
+            observed_platform="ps3",
+        ),
+    )
+
+    payload = _concise_identification_payload(
+        Path("game.iso"),
+        result,
+    )
+
+    assert payload["requested_identity"] == {
+        "platform": "wii",
+        "identifier": "RMCE01",
+        "status": "mismatch",
+        "observed_platform": "ps3",
+    }
+
+
+def test_identification_text_warns_on_soft_identity_mismatch(
+    capsys,
+) -> None:
+    from rom_metadata_framework.cli import (
+        _print_identification_text,
+    )
+
+    _print_identification_text(
+        {
+            "path": "game.iso",
+            "status": "local_strong",
+            "platform": {
+                "id": "ps3",
+                "name": "PlayStation 3",
+            },
+            "requested_identity": {
+                "platform": "wii",
+                "identifier": "RMCE01",
+                "status": "mismatch",
+                "observed_platform": "ps3",
+            },
+        }
+    )
+
+    output = capsys.readouterr().out
+
+    assert "Platform:" in output
+    assert "PlayStation 3" in output
+    assert "WARNING: identity hint" in output
+    assert "Observed identity: ps3" in output
+
+
+def test_inspect_help_exposes_directed_selection(
+    capsys,
+) -> None:
+    import pytest
+
+    from rom_metadata_framework.cli import (
+        build_parser,
+    )
+
+    parser = build_parser()
+
+    with pytest.raises(SystemExit) as exc_info:
+        parser.parse_args(
+            ["inspect", "--help"]
+        )
+
+    assert exc_info.value.code == 0
+
+    output = capsys.readouterr().out
+
+    assert "--platform PLATFORM" in output
+    assert "--identity PLATFORM:ID" in output
+    assert "--restrict" in output
+
+
+def test_local_requested_identity_payload_matches() -> None:
+    from types import SimpleNamespace
+
+    from rom_metadata_framework.cli import (
+        _local_requested_identity_payload,
+    )
+    from rom_metadata_framework.inspection import (
+        StructuralInspectionResult,
+    )
+    from rom_metadata_framework.local_metadata import (
+        LocalContentMetadata,
+        LocalIdentifier,
+        LocalMetadataProvenance,
+    )
+    from rom_metadata_framework.selection import (
+        IdentificationSelection,
+        RequestedIdentity,
+    )
+
+    payload = _local_requested_identity_payload(
+        selection=IdentificationSelection(
+            identity=RequestedIdentity.parse(
+                "wii:RMCE01"
+            )
+        ),
+        detection=SimpleNamespace(
+            best=SimpleNamespace(
+                platform="wii"
+            )
+        ),
+        inspection=StructuralInspectionResult(
+            local_metadata=LocalContentMetadata(
+                platform="wii",
+                identifiers=(
+                    LocalIdentifier(
+                        namespace="nintendo-game-id",
+                        value="RMCE01",
+                        provenance=LocalMetadataProvenance(
+                            source="synthetic",
+                            method="fixture",
+                        ),
+                    ),
+                ),
+            )
+        ),
+    )
+
+    assert payload is not None
+    assert payload["status"] == "matched"
+    assert payload["observed_identifier"] == "RMCE01"
+
+
+def test_local_requested_identity_payload_wrong_platform() -> None:
+    from types import SimpleNamespace
+
+    from rom_metadata_framework.cli import (
+        _local_requested_identity_payload,
+    )
+    from rom_metadata_framework.selection import (
+        IdentificationSelection,
+        RequestedIdentity,
+    )
+
+    payload = _local_requested_identity_payload(
+        selection=IdentificationSelection(
+            identity=RequestedIdentity.parse(
+                "wii:RMCE01"
+            )
+        ),
+        detection=SimpleNamespace(
+            best=SimpleNamespace(
+                platform="ps3"
+            )
+        ),
+        inspection=None,
+    )
+
+    assert payload is not None
+    assert payload["status"] == "mismatch"
+    assert payload["observed_platform"] == "ps3"
+
+
+def test_inspect_restricted_identity_mismatch_is_conflict(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from types import SimpleNamespace
+
+    from rom_metadata_framework import cli
+    from rom_metadata_framework.inspection import (
+        StructuralInspectionResult,
+    )
+    from rom_metadata_framework.local_metadata import (
+        LocalContentMetadata,
+        LocalIdentifier,
+        LocalMetadataProvenance,
+    )
+
+    path = tmp_path / "game.iso"
+    path.write_bytes(b"x")
+
+    class Detector:
+        def detect(self, candidate):
+            return SimpleNamespace(
+                best=SimpleNamespace(
+                    platform="wii"
+                ),
+                candidates=(),
+            )
+
+    class Inspector:
+        def inspect(self, candidate):
+            return StructuralInspectionResult(
+                local_metadata=LocalContentMetadata(
+                    platform="wii",
+                    identifiers=(
+                        LocalIdentifier(
+                            namespace="nintendo-game-id",
+                            value="RSBE01",
+                            provenance=LocalMetadataProvenance(
+                                source="synthetic",
+                                method="fixture",
+                            ),
+                        ),
+                    ),
+                )
+            )
+
+    monkeypatch.setattr(
+        cli,
+        "build_default_detector",
+        lambda config, selection=None: Detector(),
+    )
+    monkeypatch.setattr(
+        cli,
+        "build_default_inspector",
+        lambda config, selection=None: Inspector(),
+    )
+
+    rc = cli.main(
+        [
+            "inspect",
+            str(path),
+            "--identity",
+            "wii:RMCE01",
+            "--restrict",
+        ]
+    )
+
+    assert rc == cli.EXIT_CONFLICT
+
+
+def test_rename_help_exposes_confirmation_and_selection(
+    capsys,
+) -> None:
+    import pytest
+
+    from rom_metadata_framework.cli import (
+        build_parser,
+    )
+
+    parser = build_parser()
+
+    with pytest.raises(SystemExit) as exc_info:
+        parser.parse_args(
+            ["rename", "--help"]
+        )
+
+    assert exc_info.value.code == 0
+
+    output = capsys.readouterr().out
+
+    assert "-y" in output
+    assert "--yes" in output
+    assert "--platform PLATFORM" in output
+    assert "--identity PLATFORM:ID" in output
+    assert "--restrict" in output
+
+
+def test_rename_path_cancel_does_not_mutate(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from types import SimpleNamespace
+
+    from rom_metadata_framework import cli
+    from rom_metadata_framework.naming import (
+        RenamePlan,
+    )
+
+    source = tmp_path / "old.iso"
+    source.write_bytes(b"payload")
+
+    result = SimpleNamespace(
+        canonical_match=object(),
+        requested_identity=None,
+    )
+
+    monkeypatch.setattr(
+        cli,
+        "_run_identification_workflow",
+        lambda *args, **kwargs: (
+            result,
+            None,
+        ),
+    )
+    monkeypatch.setattr(
+        cli,
+        "_concise_identification_payload",
+        lambda *args, **kwargs: {
+            "path": str(source),
+            "status": "catalogue",
+        },
+    )
+    monkeypatch.setattr(
+        cli,
+        "_print_identification_text",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        cli,
+        "verify_identification",
+        lambda value: SimpleNamespace(
+            content_known_good=True,
+            representation_known_good=True,
+            has_known_bad=False,
+            has_conflicts=False,
+            physical=None,
+            normalized=None,
+            release_reconciliation=None,
+        ),
+    )
+    monkeypatch.setattr(
+        cli.NamingPolicy,
+        "plan_identification_rename",
+        lambda *args, **kwargs: RenamePlan(
+            source_name="old.iso",
+            destination_name="new.iso",
+            reason="test",
+            safe_to_apply=True,
+            operation="rename",
+            content_known_good=True,
+        ),
+    )
+    monkeypatch.setattr(
+        "builtins.input",
+        lambda prompt: "n",
+    )
+
+    rc = cli._rename_path(
+        source,
+        normalize=True,
+        selection=None,
+        assume_yes=False,
+    )
+
+    assert rc == cli.EXIT_OK
+    assert source.read_bytes() == b"payload"
+    assert not (tmp_path / "new.iso").exists()
+
+
+def test_rename_path_yes_moves_file(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from types import SimpleNamespace
+
+    from rom_metadata_framework import cli
+    from rom_metadata_framework.naming import (
+        RenamePlan,
+    )
+
+    source = tmp_path / "old.iso"
+    source.write_bytes(b"payload")
+
+    result = SimpleNamespace(
+        canonical_match=object(),
+        requested_identity=None,
+    )
+
+    monkeypatch.setattr(
+        cli,
+        "_run_identification_workflow",
+        lambda *args, **kwargs: (
+            result,
+            None,
+        ),
+    )
+    monkeypatch.setattr(
+        cli,
+        "_concise_identification_payload",
+        lambda *args, **kwargs: {
+            "path": str(source),
+            "status": "catalogue",
+        },
+    )
+    monkeypatch.setattr(
+        cli,
+        "_print_identification_text",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        cli,
+        "verify_identification",
+        lambda value: SimpleNamespace(
+            content_known_good=True,
+            representation_known_good=True,
+            has_known_bad=False,
+            has_conflicts=False,
+            physical=None,
+            normalized=None,
+            release_reconciliation=None,
+        ),
+    )
+    monkeypatch.setattr(
+        cli.NamingPolicy,
+        "plan_identification_rename",
+        lambda *args, **kwargs: RenamePlan(
+            source_name="old.iso",
+            destination_name="new.iso",
+            reason="test",
+            safe_to_apply=True,
+            operation="rename",
+            content_known_good=True,
+        ),
+    )
+
+    rc = cli._rename_path(
+        source,
+        normalize=True,
+        selection=None,
+        assume_yes=True,
+    )
+
+    assert rc == cli.EXIT_OK
+    assert not source.exists()
+    assert (
+        tmp_path / "new.iso"
+    ).read_bytes() == b"payload"
+
+
+def test_rename_path_never_overwrites_destination(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from types import SimpleNamespace
+
+    from rom_metadata_framework import cli
+    from rom_metadata_framework.naming import (
+        RenamePlan,
+    )
+
+    source = tmp_path / "old.iso"
+    destination = tmp_path / "new.iso"
+
+    source.write_bytes(b"source")
+    destination.write_bytes(b"destination")
+
+    result = SimpleNamespace(
+        canonical_match=object(),
+        requested_identity=None,
+    )
+
+    monkeypatch.setattr(
+        cli,
+        "_run_identification_workflow",
+        lambda *args, **kwargs: (
+            result,
+            None,
+        ),
+    )
+    monkeypatch.setattr(
+        cli,
+        "_concise_identification_payload",
+        lambda *args, **kwargs: {
+            "path": str(source),
+            "status": "catalogue",
+        },
+    )
+    monkeypatch.setattr(
+        cli,
+        "_print_identification_text",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        cli,
+        "verify_identification",
+        lambda value: SimpleNamespace(
+            content_known_good=True,
+            representation_known_good=True,
+            has_known_bad=False,
+            has_conflicts=False,
+            physical=None,
+            normalized=None,
+            release_reconciliation=None,
+        ),
+    )
+    monkeypatch.setattr(
+        cli.NamingPolicy,
+        "plan_identification_rename",
+        lambda *args, **kwargs: RenamePlan(
+            source_name="old.iso",
+            destination_name="new.iso",
+            reason="test",
+            safe_to_apply=True,
+            operation="rename",
+            content_known_good=True,
+        ),
+    )
+
+    rc = cli._rename_path(
+        source,
+        normalize=True,
+        selection=None,
+        assume_yes=True,
+    )
+
+    assert rc == cli.EXIT_CONFLICT
+    assert source.read_bytes() == b"source"
+    assert destination.read_bytes() == b"destination"
+
+
+def test_rename_path_refuses_soft_identity_mismatch(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from types import SimpleNamespace
+
+    from rom_metadata_framework import cli
+    from rom_metadata_framework.identification import (
+        RequestedIdentityStatus,
+    )
+    from rom_metadata_framework.selection import (
+        IdentificationSelection,
+        RequestedIdentity,
+    )
+
+    source = tmp_path / "old.iso"
+    source.write_bytes(b"payload")
+
+    result = SimpleNamespace(
+        canonical_match=object(),
+        requested_identity=SimpleNamespace(
+            status=RequestedIdentityStatus.MISMATCH,
+        ),
+    )
+
+    monkeypatch.setattr(
+        cli,
+        "_run_identification_workflow",
+        lambda *args, **kwargs: (
+            result,
+            None,
+        ),
+    )
+    monkeypatch.setattr(
+        cli,
+        "_concise_identification_payload",
+        lambda *args, **kwargs: {
+            "path": str(source),
+            "status": "catalogue",
+        },
+    )
+    monkeypatch.setattr(
+        cli,
+        "_print_identification_text",
+        lambda *args, **kwargs: None,
+    )
+
+    rc = cli._rename_path(
+        source,
+        normalize=True,
+        selection=IdentificationSelection(
+            identity=RequestedIdentity.parse(
+                "wii:RMCE01"
+            )
+        ),
+        assume_yes=True,
+    )
+
+    assert rc == cli.EXIT_CONFLICT
+    assert source.exists()
+
+
+def test_rename_path_rejects_symlink_before_identification(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from rom_metadata_framework import cli
+
+    target = tmp_path / "target.iso"
+    source = tmp_path / "alias.iso"
+
+    target.write_bytes(b"payload")
+    source.symlink_to(target)
+
+    def fail_workflow(*args, **kwargs):
+        raise AssertionError(
+            "identification must not run for rename symlink"
+        )
+
+    monkeypatch.setattr(
+        cli,
+        "_run_identification_workflow",
+        fail_workflow,
+    )
+
+    rc = cli._rename_path(
+        source,
+        normalize=True,
+        selection=None,
+        assume_yes=True,
+    )
+
+    assert rc == cli.EXIT_ERROR
+    assert source.is_symlink()
+    assert target.read_bytes() == b"payload"
+
+
+def test_shared_workflow_translates_restricted_identity_mismatch(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from rom_metadata_framework import cli
+    from rom_metadata_framework.identification import (
+        RequestedIdentityMismatchError,
+    )
+
+    path = tmp_path / "game.iso"
+    path.write_bytes(b"x")
+
+    def fail_identification(*args, **kwargs):
+        raise RequestedIdentityMismatchError(
+            platform="wii",
+            requested_identifier="RMCE01",
+            observed_identifier="RSBE01",
+        )
+
+    monkeypatch.setattr(
+        cli,
+        "identify_file",
+        fail_identification,
+    )
+
+    result, error_code = (
+        cli._run_identification_workflow(
+            path,
+            as_json=False,
+            normalize=False,
+            conflict_context="identification",
+        )
+    )
+
+    assert result is None
+    assert error_code == cli.EXIT_CONFLICT
+
+
+def test_shared_workflow_translates_restricted_identity_unresolved(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from rom_metadata_framework import cli
+    from rom_metadata_framework.identification import (
+        RequestedIdentityUnresolvedError,
+    )
+
+    path = tmp_path / "game.iso"
+    path.write_bytes(b"x")
+
+    def fail_identification(*args, **kwargs):
+        raise RequestedIdentityUnresolvedError(
+            platform="wii",
+            requested_identifier="RMCE01",
+        )
+
+    monkeypatch.setattr(
+        cli,
+        "identify_file",
+        fail_identification,
+    )
+
+    result, error_code = (
+        cli._run_identification_workflow(
+            path,
+            as_json=False,
+            normalize=False,
+            conflict_context="identification",
+        )
+    )
+
+    assert result is None
+    assert error_code == cli.EXIT_UNRESOLVED
+
+
+def test_shared_workflow_translates_restricted_platform_unresolved(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from rom_metadata_framework import cli
+    from rom_metadata_framework.identification import (
+        RequestedPlatformUnresolvedError,
+    )
+
+    path = tmp_path / "game.iso"
+    path.write_bytes(b"x")
+
+    def fail_identification(*args, **kwargs):
+        raise RequestedPlatformUnresolvedError(
+            platform="ps3",
+        )
+
+    monkeypatch.setattr(
+        cli,
+        "identify_file",
+        fail_identification,
+    )
+
+    result, error_code = (
+        cli._run_identification_workflow(
+            path,
+            as_json=False,
+            normalize=False,
+            conflict_context="identification",
+        )
+    )
+
+    assert result is None
+    assert error_code == cli.EXIT_UNRESOLVED

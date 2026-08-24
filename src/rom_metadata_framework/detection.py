@@ -7,6 +7,7 @@ from types import MappingProxyType
 from typing import Protocol, runtime_checkable
 
 from .platforms import canonical_platform_name
+from .selection import component_supports_platform
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,38 +132,138 @@ class CompositePlatformDetector:
     """Combine platform evidence from independent detectors."""
 
     detectors: tuple[PlatformDetector, ...]
+    preferred_platform: str | None = None
+    restrict_platform: bool = False
+
+    def __post_init__(self) -> None:
+        if self.preferred_platform is not None:
+            object.__setattr__(
+                self,
+                "preferred_platform",
+                canonical_platform_name(
+                    self.preferred_platform
+                ),
+            )
+
+        if (
+            self.restrict_platform
+            and self.preferred_platform is None
+        ):
+            raise ValueError(
+                "restricted detector requires a preferred platform"
+            )
 
     @property
     def name(self) -> str:
         return "composite"
 
-    def detect(self, path: Path) -> PlatformDetection:
-        """Run every detector and combine candidates by platform."""
+    def detect(
+        self,
+        path: Path,
+        *,
+        preferred_platform: str | None = None,
+        restrict_platform: bool = False,
+    ) -> PlatformDetection:
+        """Run detectors with optional platform-directed routing.
+
+        A preferred platform is tested first. If it positively identifies
+        the requested platform, unrelated detectors are not invoked.
+
+        If the preferred platform does not match and routing is unrestricted,
+        the remaining detectors run as normal fallback.
+
+        Restricted routing invokes only components that own the requested
+        platform.
+        """
 
         path = Path(path)
         candidates: dict[str, PlatformCandidate] = {}
 
-        for detector in self.detectors:
-            detection = detector.detect(path)
+        preferred_platform = (
+            preferred_platform
+            if preferred_platform is not None
+            else self.preferred_platform
+        )
+        restrict_platform = (
+            restrict_platform
+            or self.restrict_platform
+        )
 
-            for candidate in detection.candidates:
-                existing = candidates.get(candidate.platform)
+        preferred = ()
+        remaining = self.detectors
 
-                if existing is None:
-                    candidates[candidate.platform] = candidate
-                    continue
+        if preferred_platform is not None:
+            preferred_platform = canonical_platform_name(
+                preferred_platform
+            )
 
-                candidates[candidate.platform] = PlatformCandidate(
-                    platform=candidate.platform,
-                    confidence=max(
-                        existing.confidence,
-                        candidate.confidence,
-                    ),
-                    evidence=(
-                        *existing.evidence,
-                        *candidate.evidence,
+            preferred = tuple(
+                detector
+                for detector in self.detectors
+                if component_supports_platform(
+                    detector.name,
+                    preferred_platform,
+                )
+            )
+            remaining = tuple(
+                detector
+                for detector in self.detectors
+                if detector not in preferred
+            )
+
+        def run_detectors(detectors):
+            for detector in detectors:
+                detection = detector.detect(path)
+
+                for candidate in detection.candidates:
+                    existing = candidates.get(
+                        candidate.platform
+                    )
+
+                    if existing is None:
+                        candidates[
+                            candidate.platform
+                        ] = candidate
+                        continue
+
+                    candidates[
+                        candidate.platform
+                    ] = PlatformCandidate(
+                        platform=candidate.platform,
+                        confidence=max(
+                            existing.confidence,
+                            candidate.confidence,
+                        ),
+                        evidence=(
+                            *existing.evidence,
+                            *candidate.evidence,
+                        ),
+                    )
+
+        if preferred:
+            run_detectors(preferred)
+
+            if (
+                preferred_platform is not None
+                and preferred_platform in candidates
+            ):
+                return PlatformDetection(
+                    candidates=tuple(
+                        candidates.values()
                     ),
                 )
+
+            if restrict_platform:
+                return PlatformDetection(
+                    candidates=tuple(
+                        candidates.values()
+                    ),
+                )
+
+        elif restrict_platform:
+            return PlatformDetection()
+
+        run_detectors(remaining)
 
         return PlatformDetection(
             candidates=tuple(candidates.values()),

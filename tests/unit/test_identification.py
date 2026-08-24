@@ -2130,3 +2130,698 @@ def test_identification_rejects_conflicting_structural_evidence(
             normalizer=Normalizer(),
             inspector=Inspector(),
         )
+
+
+def test_restricted_identity_mismatch_fails_before_hashing(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    import pytest
+
+    from rom_metadata_framework.detection import (
+        PlatformCandidate,
+        PlatformDetection,
+    )
+    from rom_metadata_framework.identification import (
+        RequestedIdentityMismatchError,
+    )
+    from rom_metadata_framework.inspection import (
+        StructuralInspectionResult,
+    )
+    from rom_metadata_framework.local_metadata import (
+        LocalContentMetadata,
+        LocalIdentifier,
+        LocalMetadataProvenance,
+    )
+    from rom_metadata_framework.selection import (
+        IdentificationSelection,
+        RequestedIdentity,
+    )
+
+    path = tmp_path / "game.iso"
+    path.write_bytes(b"not-actually-a-rom")
+
+    class Detector:
+        name = "wii"
+
+        def detect(self, candidate):
+            return PlatformDetection(
+                candidates=(
+                    PlatformCandidate(
+                        platform="wii",
+                        confidence=100,
+                    ),
+                )
+            )
+
+    provenance = LocalMetadataProvenance(
+        source="synthetic",
+        method="fixture",
+    )
+
+    class Inspector:
+        name = "wii"
+
+        def inspect(self, candidate):
+            return StructuralInspectionResult(
+                local_metadata=LocalContentMetadata(
+                    platform="wii",
+                    identifiers=(
+                        LocalIdentifier(
+                            namespace=(
+                                "nintendo-game-id"
+                            ),
+                            value="RSBE01",
+                            provenance=provenance,
+                        ),
+                    ),
+                )
+            )
+
+    class Resolver:
+        name = "unused"
+
+        def identify(self, identity):
+            raise AssertionError(
+                "provider must not run"
+            )
+
+        def identify_lookup(self, lookup):
+            raise AssertionError
+
+    def fail_hash(*args, **kwargs):
+        raise AssertionError(
+            "full-file hashing must not run"
+        )
+
+    monkeypatch.setattr(
+        "rom_metadata_framework.identification."
+        "GenericHashAdapter.identify",
+        fail_hash,
+    )
+
+    selection = IdentificationSelection(
+        identity=RequestedIdentity.parse(
+            "wii:RMCE01"
+        ),
+        restrict=True,
+    )
+
+    with pytest.raises(
+        RequestedIdentityMismatchError
+    ) as exc_info:
+        identify_file(
+            path,
+            detector=Detector(),
+            resolver=Resolver(),
+            inspector=Inspector(),
+            selection=selection,
+        )
+
+    assert (
+        exc_info.value.requested_identifier
+        == "RMCE01"
+    )
+    assert (
+        exc_info.value.observed_identifier
+        == "RSBE01"
+    )
+
+
+def test_restricted_identity_unknown_platform_fails_before_hashing(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    import pytest
+
+    from rom_metadata_framework.detection import (
+        PlatformDetection,
+    )
+    from rom_metadata_framework.identification import (
+        RequestedIdentityUnresolvedError,
+    )
+    from rom_metadata_framework.selection import (
+        IdentificationSelection,
+        RequestedIdentity,
+    )
+
+    path = tmp_path / "game.iso"
+    path.write_bytes(b"x")
+
+    class Detector:
+        name = "wii"
+
+        def detect(self, candidate):
+            return PlatformDetection()
+
+    class Resolver:
+        name = "unused"
+
+        def identify(self, identity):
+            raise AssertionError
+
+        def identify_lookup(self, lookup):
+            raise AssertionError
+
+    def fail_hash(*args, **kwargs):
+        raise AssertionError(
+            "full-file hashing must not run"
+        )
+
+    monkeypatch.setattr(
+        "rom_metadata_framework.identification."
+        "GenericHashAdapter.identify",
+        fail_hash,
+    )
+
+    selection = IdentificationSelection(
+        identity=RequestedIdentity.parse(
+            "wii:RMCE01"
+        ),
+        restrict=True,
+    )
+
+    with pytest.raises(
+        RequestedIdentityUnresolvedError
+    ):
+        identify_file(
+            path,
+            detector=Detector(),
+            resolver=Resolver(),
+            selection=selection,
+        )
+
+
+def test_restricted_identity_match_reuses_preflight_inspection(
+    tmp_path,
+) -> None:
+    from rom_metadata_framework.detection import (
+        PlatformCandidate,
+        PlatformDetection,
+    )
+    from rom_metadata_framework.inspection import (
+        StructuralInspectionResult,
+    )
+    from rom_metadata_framework.local_metadata import (
+        LocalContentMetadata,
+        LocalIdentifier,
+        LocalMetadataProvenance,
+    )
+    from rom_metadata_framework.selection import (
+        IdentificationSelection,
+        RequestedIdentity,
+    )
+
+    path = tmp_path / "game.iso"
+    path.write_bytes(b"small-synthetic-content")
+
+    detector_calls = 0
+    inspector_calls = 0
+
+    class Detector:
+        name = "wii"
+
+        def detect(self, candidate):
+            nonlocal detector_calls
+            detector_calls += 1
+
+            return PlatformDetection(
+                candidates=(
+                    PlatformCandidate(
+                        platform="wii",
+                        confidence=100,
+                    ),
+                )
+            )
+
+    provenance = LocalMetadataProvenance(
+        source="synthetic",
+        method="fixture",
+    )
+
+    class Inspector:
+        name = "wii"
+
+        def inspect(self, candidate):
+            nonlocal inspector_calls
+            inspector_calls += 1
+
+            return StructuralInspectionResult(
+                local_metadata=LocalContentMetadata(
+                    platform="wii",
+                    identifiers=(
+                        LocalIdentifier(
+                            namespace=(
+                                "nintendo-game-id"
+                            ),
+                            value="RMCE01",
+                            provenance=provenance,
+                        ),
+                    ),
+                )
+            )
+
+    class Resolver:
+        name = "fake"
+
+        def identify(self, identity):
+            return None
+
+        def identify_lookup(self, lookup):
+            return None
+
+    selection = IdentificationSelection(
+        identity=RequestedIdentity.parse(
+            "wii:rmce01"
+        ),
+        restrict=True,
+    )
+
+    result = identify_file(
+        path,
+        detector=Detector(),
+        resolver=Resolver(),
+        inspector=Inspector(),
+        selection=selection,
+    )
+
+    assert detector_calls == 1
+    assert inspector_calls == 1
+    assert result.local_metadata is not None
+    assert (
+        result.local_metadata.identifiers[0].value
+        == "RMCE01"
+    )
+
+
+def test_unrestricted_identity_does_not_change_legacy_order(
+    tmp_path,
+) -> None:
+    from rom_metadata_framework.detection import (
+        PlatformDetection,
+    )
+    from rom_metadata_framework.selection import (
+        IdentificationSelection,
+        RequestedIdentity,
+    )
+
+    path = tmp_path / "game.bin"
+    path.write_bytes(b"physical")
+
+    events = []
+
+    class Detector:
+        name = "wii"
+
+        def detect(self, candidate):
+            events.append("detect")
+            return PlatformDetection()
+
+    class Resolver:
+        name = "fake"
+
+        def identify(self, identity):
+            events.append("provider")
+
+        def identify_lookup(self, lookup):
+            return None
+
+    selection = IdentificationSelection(
+        identity=RequestedIdentity.parse(
+            "wii:RMCE01"
+        ),
+    )
+
+    identify_file(
+        path,
+        detector=Detector(),
+        resolver=Resolver(),
+        selection=selection,
+    )
+
+    assert events == [
+        "detect",
+        "provider",
+    ]
+
+
+def test_restricted_platform_miss_fails_before_hashing(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    import pytest
+
+    from rom_metadata_framework.detection import (
+        PlatformDetection,
+    )
+    from rom_metadata_framework.identification import (
+        RequestedPlatformUnresolvedError,
+    )
+    from rom_metadata_framework.selection import (
+        IdentificationSelection,
+    )
+
+    path = tmp_path / "game.iso"
+    path.write_bytes(b"x")
+
+    class Detector:
+        name = "ps3"
+
+        def detect(self, candidate):
+            return PlatformDetection()
+
+    class Resolver:
+        name = "unused"
+
+        def identify(self, identity):
+            raise AssertionError(
+                "provider must not run"
+            )
+
+        def identify_lookup(self, lookup):
+            raise AssertionError
+
+    def fail_hash(*args, **kwargs):
+        raise AssertionError(
+            "full-file hashing must not run"
+        )
+
+    monkeypatch.setattr(
+        "rom_metadata_framework.identification."
+        "GenericHashAdapter.identify",
+        fail_hash,
+    )
+
+    with pytest.raises(
+        RequestedPlatformUnresolvedError
+    ):
+        identify_file(
+            path,
+            detector=Detector(),
+            resolver=Resolver(),
+            selection=IdentificationSelection(
+                platform="ps3",
+                restrict=True,
+            ),
+        )
+
+
+def test_soft_identity_assessment_matches_local_identifier(
+    tmp_path,
+) -> None:
+    from rom_metadata_framework.detection import (
+        PlatformCandidate,
+        PlatformDetection,
+    )
+    from rom_metadata_framework.identification import (
+        RequestedIdentityStatus,
+    )
+    from rom_metadata_framework.inspection import (
+        StructuralInspectionResult,
+    )
+    from rom_metadata_framework.local_metadata import (
+        LocalContentMetadata,
+        LocalIdentifier,
+        LocalMetadataProvenance,
+    )
+    from rom_metadata_framework.selection import (
+        IdentificationSelection,
+        RequestedIdentity,
+    )
+
+    path = tmp_path / "game.iso"
+    path.write_bytes(b"synthetic")
+
+    class Detector:
+        name = "wii"
+
+        def detect(self, candidate):
+            return PlatformDetection(
+                candidates=(
+                    PlatformCandidate(
+                        platform="wii",
+                        confidence=100,
+                    ),
+                )
+            )
+
+    class Inspector:
+        name = "wii"
+
+        def inspect(self, candidate):
+            return StructuralInspectionResult(
+                local_metadata=LocalContentMetadata(
+                    platform="wii",
+                    identifiers=(
+                        LocalIdentifier(
+                            namespace="nintendo-game-id",
+                            value="RMCE01",
+                            provenance=LocalMetadataProvenance(
+                                source="synthetic",
+                                method="fixture",
+                            ),
+                        ),
+                    ),
+                )
+            )
+
+    class Resolver:
+        name = "fake"
+
+        def identify(self, identity):
+            return None
+
+        def identify_lookup(self, lookup):
+            return None
+
+    result = identify_file(
+        path,
+        detector=Detector(),
+        resolver=Resolver(),
+        inspector=Inspector(),
+        selection=IdentificationSelection(
+            identity=RequestedIdentity.parse(
+                "wii:rmce01"
+            ),
+        ),
+    )
+
+    assert result.requested_identity is not None
+    assert (
+        result.requested_identity.status
+        is RequestedIdentityStatus.MATCHED
+    )
+    assert (
+        result.requested_identity.observed_identifier
+        == "RMCE01"
+    )
+
+
+def test_soft_identity_assessment_reports_identifier_mismatch(
+    tmp_path,
+) -> None:
+    from rom_metadata_framework.detection import (
+        PlatformCandidate,
+        PlatformDetection,
+    )
+    from rom_metadata_framework.identification import (
+        RequestedIdentityStatus,
+    )
+    from rom_metadata_framework.inspection import (
+        StructuralInspectionResult,
+    )
+    from rom_metadata_framework.local_metadata import (
+        LocalContentMetadata,
+        LocalIdentifier,
+        LocalMetadataProvenance,
+    )
+    from rom_metadata_framework.selection import (
+        IdentificationSelection,
+        RequestedIdentity,
+    )
+
+    path = tmp_path / "game.iso"
+    path.write_bytes(b"synthetic")
+
+    class Detector:
+        name = "wii"
+
+        def detect(self, candidate):
+            return PlatformDetection(
+                candidates=(
+                    PlatformCandidate(
+                        platform="wii",
+                        confidence=100,
+                    ),
+                )
+            )
+
+    class Inspector:
+        name = "wii"
+
+        def inspect(self, candidate):
+            return StructuralInspectionResult(
+                local_metadata=LocalContentMetadata(
+                    platform="wii",
+                    identifiers=(
+                        LocalIdentifier(
+                            namespace="nintendo-game-id",
+                            value="RSBE01",
+                            provenance=LocalMetadataProvenance(
+                                source="synthetic",
+                                method="fixture",
+                            ),
+                        ),
+                    ),
+                )
+            )
+
+    class Resolver:
+        name = "fake"
+
+        def identify(self, identity):
+            return None
+
+        def identify_lookup(self, lookup):
+            return None
+
+    result = identify_file(
+        path,
+        detector=Detector(),
+        resolver=Resolver(),
+        inspector=Inspector(),
+        selection=IdentificationSelection(
+            identity=RequestedIdentity.parse(
+                "wii:RMCE01"
+            ),
+        ),
+    )
+
+    assert result.requested_identity is not None
+    assert (
+        result.requested_identity.status
+        is RequestedIdentityStatus.MISMATCH
+    )
+    assert result.requested_identity.observed_platform == "wii"
+    assert (
+        result.requested_identity.observed_identifier
+        == "RSBE01"
+    )
+
+
+def test_soft_identity_wrong_platform_reports_actual_platform(
+    tmp_path,
+) -> None:
+    from rom_metadata_framework.detection import (
+        PlatformCandidate,
+        PlatformDetection,
+    )
+    from rom_metadata_framework.identification import (
+        RequestedIdentityStatus,
+    )
+    from rom_metadata_framework.selection import (
+        IdentificationSelection,
+        RequestedIdentity,
+    )
+
+    path = tmp_path / "game.iso"
+    path.write_bytes(b"synthetic")
+
+    class Detector:
+        name = "fake"
+
+        def detect(self, candidate):
+            return PlatformDetection(
+                candidates=(
+                    PlatformCandidate(
+                        platform="ps3",
+                        confidence=100,
+                    ),
+                )
+            )
+
+    class Resolver:
+        name = "fake"
+
+        def identify(self, identity):
+            return None
+
+        def identify_lookup(self, lookup):
+            return None
+
+    result = identify_file(
+        path,
+        detector=Detector(),
+        resolver=Resolver(),
+        selection=IdentificationSelection(
+            identity=RequestedIdentity.parse(
+                "wii:RMCE01"
+            ),
+        ),
+    )
+
+    assert result.requested_identity is not None
+    assert (
+        result.requested_identity.status
+        is RequestedIdentityStatus.MISMATCH
+    )
+    assert result.requested_identity.observed_platform == "ps3"
+    assert result.requested_identity.observed_identifier is None
+
+
+def test_soft_identity_without_native_id_is_unresolved(
+    tmp_path,
+) -> None:
+    from rom_metadata_framework.detection import (
+        PlatformCandidate,
+        PlatformDetection,
+    )
+    from rom_metadata_framework.identification import (
+        RequestedIdentityStatus,
+    )
+    from rom_metadata_framework.selection import (
+        IdentificationSelection,
+        RequestedIdentity,
+    )
+
+    path = tmp_path / "game.iso"
+    path.write_bytes(b"synthetic")
+
+    class Detector:
+        name = "wii"
+
+        def detect(self, candidate):
+            return PlatformDetection(
+                candidates=(
+                    PlatformCandidate(
+                        platform="wii",
+                        confidence=100,
+                    ),
+                )
+            )
+
+    class Resolver:
+        name = "fake"
+
+        def identify(self, identity):
+            return None
+
+        def identify_lookup(self, lookup):
+            return None
+
+    result = identify_file(
+        path,
+        detector=Detector(),
+        resolver=Resolver(),
+        selection=IdentificationSelection(
+            identity=RequestedIdentity.parse(
+                "wii:RMCE01"
+            ),
+        ),
+    )
+
+    assert result.requested_identity is not None
+    assert (
+        result.requested_identity.status
+        is RequestedIdentityStatus.UNRESOLVED
+    )
