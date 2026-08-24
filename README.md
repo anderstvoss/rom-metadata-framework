@@ -279,8 +279,14 @@ that an arbitrary physical representation is known-good.
 
 ## Naming and file operations
 
-Canonical naming consumes canonical release identity and verification state,
-not descriptive metadata enrichment.
+Canonical naming consumes release identity and verification state, not
+descriptive metadata enrichment.
+
+The legacy naming path preserves provider canonical release names. A structured
+identification-aware path can additionally use a clean canonical title plus
+agreeing artifact-local evidence such as the primary platform identifier,
+country/region, and non-default revision. It does not heuristically parse
+provider release-name strings.
 
 The framework's default naming operation is non-destructive: it produces a
 copy/new-file plan rather than silently replacing the source.

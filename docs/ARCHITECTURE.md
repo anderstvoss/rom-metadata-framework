@@ -261,10 +261,48 @@ Known-bad evidence and unresolved conflicts block safe canonical naming.
 
 ## Naming and file operations
 
-`NamingPolicy` derives filenames from `CanonicalReleaseIdentity`, not from
-provider metadata or local metadata.
+The legacy `NamingPolicy.canonical_filename()` and `plan_rename()` APIs derive
+filenames directly from `CanonicalReleaseIdentity`. They remain available for
+release-name-based canonical naming.
 
-`plan_rename()` is non-mutating and returns a `RenamePlan`.
+Structured naming uses a separate naming projection rather than expanding
+canonical release identity with artifact-local fields.
+
+`naming_input_from_identification()` selects only naming-relevant evidence from
+an `IdentificationResult` and produces a `NamingInput`. The projection keeps
+release identity and artifact-local evidence distinct:
+
+- the clean canonical `title` is preferred when a provider supplies one;
+- otherwise the provider `release_name` is preserved verbatim;
+- a platform-native primary identifier may be selected from agreeing local
+  metadata;
+- country is preferred over broader region;
+- non-default release revision may be selected;
+- disc position is usable only when both disc number and total are explicitly
+  available and the total is greater than one;
+- contradictory or platform-unscoped local metadata does not alter the
+  proposed filename.
+
+When only `release_name` is available, structured local region, revision, disc,
+and media qualifiers are not appended. Catalogue release names may already
+encode those values, and the framework does not parse provider naming strings
+heuristically to recover or deduplicate them.
+
+`NamingPolicy.structured_filename()` currently renders structured evidence in
+this order:
+
+~~~text
+Title [Primary ID] (Region) (Disc N of M) (Media Qualifier) (Rev N).ext
+~~~
+
+Only fields actually supported by the naming projection are emitted. No
+platform adapter currently populates the generic `disc_totals` field, and no
+special-media qualifier is currently promoted into the naming projection, so
+those components are normally absent today.
+
+`plan_identification_rename()` applies the same verification and conflict
+requirements as the legacy `plan_rename()` path. Both methods are non-mutating
+and return a `RenamePlan`.
 
 The default operation is `copy`.
 
