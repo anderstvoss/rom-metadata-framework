@@ -1,66 +1,214 @@
 # ROM Metadata Framework
 
-ROM Metadata Framework is a Linux-oriented Python framework for identifying ROM
-and disc-image contents and resolving those identities into release metadata.
+ROM Metadata Framework is a Linux-oriented Python framework and command-line
+tool for identifying ROM, package, and disc-image contents and resolving those
+identities into release metadata.
 
-The project deliberately separates physical-file identity, container
-representation, canonical content, canonical release identity, metadata
-evidence, verification, and naming policy. This keeps platform-specific parsing
-independent from provider lookup and prevents metadata enrichment from silently
-changing identity or trust decisions.
+The project deliberately separates:
+
+- physical-file identity;
+- platform detection;
+- physical/container representation;
+- canonical or normalized content;
+- artifact-local structural metadata;
+- provider/catalogue release identity;
+- metadata enrichment;
+- verification;
+- naming and file-operation policy.
+
+This prevents container details, provider ordering, or descriptive metadata
+from silently changing identity or trust decisions.
 
 ## Status
 
-The project is pre-1.0 and under active development.
+ROM Metadata Framework is pre-1.0 and under active development.
 
-The framework currently provides:
+Platform coverage is intentionally incremental. A platform being registered in
+the canonical registry or having a provider mapping does not necessarily mean
+the standard runtime currently implements detection or parsing for that
+platform.
 
-- physical CRC32, MD5, SHA1, and SHA256 identity;
-- platform evidence and reconciliation;
-- canonical-content normalization;
-- physical-representation evidence;
-- canonical release reconciliation;
-- local structural metadata;
-- independent provider metadata collection;
-- metadata reconciliation without implicit provider precedence;
-- verification policy;
-- conservative naming plans;
-- runtime capability reporting;
-- an explicit consumer-facing Python API.
+## Installation
 
-Platform and format support remains intentionally modular and incomplete.
+The package requires Python 3.11 or newer.
 
-## Current normalization support
+To install a locally built wheel:
 
-The standard normalizer contains:
+~~~text
+python -m pip install dist/rom_metadata_framework-*.whl
+~~~
 
-- NES normalization implemented directly by the framework;
-- GameCube/Wii normalization backed by `dolphin-tool`;
-- original-Xbox XDVDFS normalization backed by `xdvdfs`.
+Package-index publication is not currently part of the project's release
+workflow.
 
-External backends are optional runtime dependencies. Missing backends are
-reported explicitly and do not prevent an independent adapter from handling a
-supported source.
+For repository development:
 
-See [Runtime Backends](docs/runtime-backends.md) for executable discovery,
-capability reporting, probe semantics, temporary storage, and the command
-contracts used by the framework.
+~~~text
+uv sync --frozen --extra dev
+~~~
 
-## Quick start
+The Python package has no mandatory third-party Python runtime dependencies.
+Some normalization paths use optional external executables.
 
-The standard application composition combines platform detection, Playmatch
-release lookup, and optional content normalization:
+See [Runtime Backends](docs/runtime-backends.md).
 
+## Command-line interface
 
-The default detector currently recognizes NES, PlayStation 2,
-PlayStation 3, Xbox 360, Nintendo Switch, GameCube/Wii, and original Xbox
-sources. The default structural inspector provides non-normalizing local
-metadata for PlayStation 2, directly readable PlayStation 3 ISO9660 disc
-images, Xbox 360 XDVDFS/XEX2 disc images, and Nintendo Switch NSP/XCI
-containers. PS3, Xbox 360, and Nintendo Switch do not currently have
-normalization paths.
+Installation provides:
 
-```python
+~~~text
+rom-metadata
+~~~
+
+The initial command set is:
+
+~~~text
+rom-metadata platforms
+rom-metadata capabilities
+rom-metadata inspect PATH
+rom-metadata identify PATH
+rom-metadata verify PATH
+~~~
+
+Examples:
+
+~~~text
+# Show implementation coverage.
+rom-metadata platforms
+
+# Show optional backend readiness.
+rom-metadata capabilities
+
+# Bounded local detection/inspection; no whole-file hashing or provider lookup.
+rom-metadata inspect game.iso
+
+# Whole-file hashing plus standard Playmatch release identification.
+rom-metadata identify game.iso
+
+# Identification plus catalogue-backed verification policy.
+rom-metadata verify game.iso
+~~~
+
+All commands support `--help`. Structured commands support `--json`.
+
+`identify` and `verify` may perform network requests through Playmatch and may
+invoke optional normalization backends. `inspect` remains bounded and local.
+
+See the full [CLI Reference](docs/cli.md) for command semantics, exit codes,
+network behavior, and the pre-1.0 JSON compatibility policy.
+
+## Supported platforms
+
+The table below describes the **standard runtime**, not merely registry or
+provider-mapping presence.
+
+| Platform | Detection | Structural inspection | Normalization | Current handling |
+| --- | --- | --- | --- | --- |
+| NES | Built in | — | Built in | iNES/NES content support; headerless normalization is explicit opt-in |
+| GameCube | External | — | External | Detection and canonical reconstruction through `dolphin-tool` |
+| Wii | External | — | External | Detection and canonical reconstruction through `dolphin-tool` |
+| PlayStation 2 | Built in | Built in | — | Bounded ISO9660 `SYSTEM.CNF` / `BOOT2` detection and local metadata |
+| PlayStation 3 | Built in | Built in | — | Directly readable ISO9660 disc images; encrypted/raw representations are not decoded |
+| Xbox | External | — | External | Original-Xbox XDVDFS handling through the `xdvdfs` backend |
+| Xbox 360 | Built in | Built in | — | Bounded XDVDFS/XEX2 detection and structural metadata |
+| Nintendo Switch | Built in | Built in | — | Bounded NSP/PFS0 and XCI/HFS0 structural handling; no NCA decryption |
+
+`rom-metadata platforms` is the machine-readable/runtime-facing source for the
+current support inventory.
+
+### Detection, inspection, and normalization are different
+
+A platform does not need every capability.
+
+**Detection** determines which platform an artifact appears to belong to.
+
+**Structural inspection** extracts representation and artifact-local facts
+without creating canonical content.
+
+**Normalization** is used only where the framework has a defensible transform
+to a canonical content identity.
+
+For that reason, PlayStation 2, PlayStation 3, Xbox 360, and Nintendo Switch
+currently have useful detection/inspection support without a normalizer.
+
+## Registered and planned platforms
+
+The canonical registry also currently contains these platforms without
+standard-runtime detector/inspection/normalization support:
+
+- SNES;
+- Sega Genesis / Mega Drive;
+- Nintendo 64;
+- Game Boy;
+- Game Boy Color;
+- Game Boy Advance;
+- PlayStation;
+- Nintendo DS;
+- PSP.
+
+These entries represent registry/provider groundwork and likely future
+expansion areas. They are **not implementation commitments, release dates, or
+claims of current ROM-format support**.
+
+Future platform work is expected to continue incrementally, with detection,
+structural parsing, normalization, and provider integration evaluated
+independently for each platform.
+
+See [Adding a Platform](docs/adding-a-platform.md) for the contribution model.
+
+## Identification pipeline
+
+At a high level:
+
+~~~text
+physical file
+   |
+   +--> whole-file identity/hashes ----------> physical provider lookup
+   |
+   +--> platform detection
+   |
+   +--> bounded structural inspection
+   |       +--> representation
+   |       +--> local metadata
+   |
+   +--> optional canonical normalization
+           +--> normalized content identity
+           +--> normalized provider lookup
+                         |
+                         v
+                release reconciliation
+                         |
+                         v
+                canonical release identity
+~~~
+
+Physical provider lookup occurs before optional structural inspection and
+normalization.
+
+Structural inspection alone never initiates normalized provider lookup.
+
+See [Architecture](docs/ARCHITECTURE.md) for the complete model.
+
+## Python API
+
+The stable consumer-facing Python façade is exported from
+`rom_metadata_framework`.
+
+The primary root workflows include:
+
+- `identify_file`;
+- `verify_identification`;
+- `collect_identification_metadata`;
+- `resolve_platform`;
+- `canonical_platform_name`.
+
+Implementation adapters, backend wrappers, routing internals, and provider
+machinery remain available from their defining modules but are not part of the
+stable root façade.
+
+Example:
+
+~~~python
 from pathlib import Path
 
 from rom_metadata_framework import identify_file
@@ -81,119 +229,64 @@ result = identify_file(
     inspector=build_default_inspector(config),
     normalizer=build_default_normalizer(config),
 )
-```
-
-See [Getting Started](docs/getting-started.md) and the runnable programs in
-[`examples/`](examples/) for runtime capability inspection, identification,
-verification, and canonical naming.
-
-## Development setup
-
-The repository uses `uv` for the locked development environment.
-
-```text
-uv sync --frozen --extra dev
-uv run --frozen pytest -q
-uv run --frozen ruff check src tests examples
-```
-
-Before publishing changes, run:
-
-```text
-./scripts/pre-public-check
-```
-
-A distributable source archive and wheel can be built with:
-
-```text
-uv build
-./scripts/check-package-artifacts
-```
-
-The artifact check validates package contents and installs the wheel into an
-isolated environment before importing the public API.
-
-## Python support
-
-The package requires Python 3.11 or newer. Continuous integration exercises the
-declared compatibility range across Python 3.11, 3.12, 3.13, and 3.14.
-
-## Public API
-
-The stable consumer-facing façade is exported from `rom_metadata_framework`.
-Implementation adapters, backend wrappers, routing internals, and lower-level
-provider machinery remain available from their defining modules but are not
-part of the root stable API.
-
-The primary root workflows are:
-
-- `identify_file`
-- `verify_identification`
-- `collect_identification_metadata`
-- `resolve_platform`
-- `canonical_platform_name`
-
-See the tests for the exact root export contract.
-
-## Result ergonomics
-
-Identification and metadata-enrichment results preserve their full evidence
-layers while also exposing convenience properties for common consumer checks.
-These helpers report state only; they do not change reconciliation, provider
-selection, verification, metadata precedence, or naming behavior.
-
-For example:
-
-```python
-result = identify_file(...)
 
 if result.identified:
-    canonical = result.canonical_match
+    print(result.canonical_match.release_name)
 
 if result.has_local_metadata:
-    local = result.local_metadata
+    print(result.local_metadata)
+~~~
 
-if result.has_release_conflict or result.has_platform_conflict:
-    # Inspect the retained reconciliation evidence.
-    ...
-```
+See [Getting Started](docs/getting-started.md) and the runnable programs in
+[`examples/`](examples/).
 
-After metadata enrichment, callers can distinguish whether provider collection
-was attempted from whether any provider actually returned metadata:
+## Verification
 
-```python
-enriched = collect_identification_metadata(...)
+Verification is evidence based.
 
-if enriched.metadata_collection_attempted:
-    ...
+The current CLI `verify` command evaluates catalogue-backed release evidence.
+It is deliberately distinct from future specialist integrity verification such
+as optical-disc sector validation, IRD-based validation, or platform
+cryptographic signature verification.
 
-if enriched.has_provider_metadata:
-    provider_results = enriched.provider_results
+The Python API also preserves physical and normalized verification evidence
+independently so that trust in normalized content does not automatically imply
+that an arbitrary physical representation is known-good.
 
-if enriched.has_metadata_divergence:
-    reconciliation = enriched.metadata_reconciliation
-```
+## Naming and file operations
 
-## Design goals
+Canonical naming consumes canonical release identity and verification state,
+not descriptive metadata enrichment.
 
-- Keep platform-specific identification behind modular adapters.
-- Keep metadata providers independent from image parsing.
-- Preserve physical representation separately from canonical content.
-- Preserve local and provider metadata as independent evidence.
-- Avoid implicit metadata precedence or first-provider-wins behavior.
-- Support third-party-derived integrations only when licensing permits the
-  intended use.
-- Preserve explicit upstream attribution and provenance.
-- Prefer external-tool boundaries when direct source reuse would create
-  undesirable licensing coupling.
-- Use synthetic or freely redistributable fixtures for public tests.
-- Prevent ROM images, credentials, private infrastructure details, and local
-  development data from entering public repository history.
+The framework's default naming operation is non-destructive: it produces a
+copy/new-file plan rather than silently replacing the source.
+
+## Development
+
+Run:
+
+~~~text
+uv run --frozen ruff check src tests examples
+uv run --frozen pytest -q
+./scripts/pre-public-check
+~~~
+
+For packaging changes:
+
+~~~text
+uv build
+./scripts/check-package-artifacts
+~~~
+
+Public tests must not contain commercial ROM data, private validation-corpus
+identifiers, credentials, or machine-specific private paths.
 
 ## Documentation
 
 - [Getting Started](docs/getting-started.md)
+- [CLI Reference](docs/cli.md)
 - [Architecture](docs/ARCHITECTURE.md)
+- [Adding a Platform](docs/adding-a-platform.md)
 - [Runtime Backends](docs/runtime-backends.md)
 - [Metadata Selection Policy](docs/metadata-selection-policy.md)
 - [Licensing Policy](docs/LICENSING.md)
@@ -201,15 +294,16 @@ if enriched.has_metadata_divergence:
 - [rcheevos Helper Contract](docs/RCHEEVOS_HELPER_CONTRACT.md)
 - [Release Policy](docs/release-policy.md)
 
-Repository contribution and security guidance is in
-[CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
+Contribution and security guidance is in [CONTRIBUTING.md](CONTRIBUTING.md) and
+[SECURITY.md](SECURITY.md).
 
 ## Distribution boundary
 
-The Python wheel contains the framework package plus applicable license/notice
-material. External backend executables, helper binaries, commercial game
-content, private validation corpora, and repository-only provenance/development
-material are not bundled into the installed package.
+The wheel contains the Python framework and applicable license/notice material.
+
+External backend executables, helper binaries, commercial game content,
+private validation corpora, local machine configuration, and credentials are
+not bundled into the installed package.
 
 The source distribution additionally contains public project documentation and
 repository guidance needed to understand and build the released source.

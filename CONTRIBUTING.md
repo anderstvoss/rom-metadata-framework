@@ -81,3 +81,16 @@ A pull request should state:
 - external dependencies or provenance implications;
 - public API impact;
 - validation performed.
+
+## Adding platforms
+
+Platform integrations should follow
+[Adding a Platform](docs/adding-a-platform.md).
+
+In particular, determine independently whether a new platform needs a detector,
+structural inspector, canonical-content normalizer, and provider mapping.
+Do not add normalization merely to make the capability matrix appear complete.
+
+Standard-runtime platform changes must keep the support inventory synchronized
+with the detector/inspector/normalizer builders and must leave
+`default_support_drift()` empty.

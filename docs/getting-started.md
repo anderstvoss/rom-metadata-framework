@@ -14,6 +14,28 @@ standard library.
 Some platform normalization features use optional external executables. See
 [Runtime Backends](runtime-backends.md).
 
+The installed package provides the `rom-metadata` command. For the complete
+command reference, see [Command-Line Interface](cli.md).
+
+A typical first check is:
+
+~~~text
+rom-metadata platforms
+rom-metadata capabilities
+~~~
+
+For bounded local inspection without whole-file hashing or provider lookup:
+
+~~~text
+rom-metadata inspect /path/to/game
+~~~
+
+For full release identification through Playmatch:
+
+~~~text
+rom-metadata identify /path/to/game
+~~~
+
 ## Check runtime capabilities
 
 Run:
