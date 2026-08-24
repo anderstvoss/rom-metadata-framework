@@ -35,6 +35,7 @@ class PlatformSupport:
     detection: PlatformCapabilityKind
     inspection: PlatformCapabilityKind
     normalization: PlatformCapabilityKind
+    integrity: PlatformCapabilityKind
     normalization_backend: str | None = None
     rcheevos_mapping: bool = False
     notes: tuple[str, ...] = ()
@@ -48,6 +49,7 @@ class _RuntimePlatformSupport:
     detection: PlatformCapabilityKind
     inspection: PlatformCapabilityKind
     normalization: PlatformCapabilityKind
+    integrity: PlatformCapabilityKind = PlatformCapabilityKind.NONE
     normalization_backend: str | None = None
     notes: tuple[str, ...] = ()
 
@@ -57,6 +59,7 @@ _IMPLEMENTED_SUPPORT: dict[str, _RuntimePlatformSupport] = {
         status=PlatformImplementationStatus.SUPPORTED,
         detection=PlatformCapabilityKind.BUILT_IN,
         inspection=PlatformCapabilityKind.NONE,
+        integrity=PlatformCapabilityKind.NONE,
         normalization=PlatformCapabilityKind.BUILT_IN,
         notes=(
             "iNES/NES content support",
@@ -67,6 +70,7 @@ _IMPLEMENTED_SUPPORT: dict[str, _RuntimePlatformSupport] = {
         status=PlatformImplementationStatus.SUPPORTED,
         detection=PlatformCapabilityKind.EXTERNAL,
         inspection=PlatformCapabilityKind.NONE,
+        integrity=PlatformCapabilityKind.NONE,
         normalization=PlatformCapabilityKind.EXTERNAL,
         normalization_backend="dolphin-tool",
         notes=(
@@ -77,6 +81,7 @@ _IMPLEMENTED_SUPPORT: dict[str, _RuntimePlatformSupport] = {
         status=PlatformImplementationStatus.SUPPORTED,
         detection=PlatformCapabilityKind.EXTERNAL,
         inspection=PlatformCapabilityKind.NONE,
+        integrity=PlatformCapabilityKind.NONE,
         normalization=PlatformCapabilityKind.EXTERNAL,
         normalization_backend="dolphin-tool",
         notes=(
@@ -87,6 +92,7 @@ _IMPLEMENTED_SUPPORT: dict[str, _RuntimePlatformSupport] = {
         status=PlatformImplementationStatus.SUPPORTED,
         detection=PlatformCapabilityKind.BUILT_IN,
         inspection=PlatformCapabilityKind.BUILT_IN,
+        integrity=PlatformCapabilityKind.NONE,
         normalization=PlatformCapabilityKind.NONE,
         notes=(
             "bounded ISO9660 SYSTEM.CNF/BOOT2 inspection",
@@ -96,6 +102,7 @@ _IMPLEMENTED_SUPPORT: dict[str, _RuntimePlatformSupport] = {
         status=PlatformImplementationStatus.SUPPORTED,
         detection=PlatformCapabilityKind.BUILT_IN,
         inspection=PlatformCapabilityKind.BUILT_IN,
+        integrity=PlatformCapabilityKind.NONE,
         normalization=PlatformCapabilityKind.NONE,
         notes=(
             "directly readable ISO9660 disc images only",
@@ -106,6 +113,7 @@ _IMPLEMENTED_SUPPORT: dict[str, _RuntimePlatformSupport] = {
         status=PlatformImplementationStatus.SUPPORTED,
         detection=PlatformCapabilityKind.EXTERNAL,
         inspection=PlatformCapabilityKind.NONE,
+        integrity=PlatformCapabilityKind.NONE,
         normalization=PlatformCapabilityKind.EXTERNAL,
         normalization_backend="xdvdfs",
         notes=(
@@ -116,6 +124,7 @@ _IMPLEMENTED_SUPPORT: dict[str, _RuntimePlatformSupport] = {
         status=PlatformImplementationStatus.SUPPORTED,
         detection=PlatformCapabilityKind.BUILT_IN,
         inspection=PlatformCapabilityKind.BUILT_IN,
+        integrity=PlatformCapabilityKind.NONE,
         normalization=PlatformCapabilityKind.NONE,
         notes=(
             "bounded XDVDFS/XEX2 structural inspection",
@@ -125,6 +134,7 @@ _IMPLEMENTED_SUPPORT: dict[str, _RuntimePlatformSupport] = {
         status=PlatformImplementationStatus.SUPPORTED,
         detection=PlatformCapabilityKind.BUILT_IN,
         inspection=PlatformCapabilityKind.BUILT_IN,
+        integrity=PlatformCapabilityKind.NONE,
         normalization=PlatformCapabilityKind.NONE,
         notes=(
             "bounded NSP/PFS0 and XCI/HFS0 structural support",
@@ -168,6 +178,12 @@ _DEFAULT_NORMALIZER_PLATFORMS: dict[str, tuple[str, ...]] = {
 }
 
 
+_DEFAULT_INTEGRITY_VERIFIER_PLATFORMS: dict[
+    str,
+    tuple[str, ...],
+] = {}
+
+
 def _rcheevos_platforms() -> frozenset[str]:
     return frozenset(
         mapping.platform
@@ -195,6 +211,7 @@ def platform_support_inventory() -> tuple[PlatformSupport, ...]:
                 detection=PlatformCapabilityKind.NONE,
                 inspection=PlatformCapabilityKind.NONE,
                 normalization=PlatformCapabilityKind.NONE,
+                integrity=PlatformCapabilityKind.NONE,
             )
 
         result.append(
@@ -206,6 +223,7 @@ def platform_support_inventory() -> tuple[PlatformSupport, ...]:
                 detection=support.detection,
                 inspection=support.inspection,
                 normalization=support.normalization,
+                integrity=support.integrity,
                 normalization_backend=(
                     support.normalization_backend
                 ),
@@ -254,6 +272,7 @@ def default_support_drift() -> tuple[str, ...]:
     from .defaults import (
         build_default_detector,
         build_default_inspector,
+        build_default_integrity_verifier,
         build_default_normalizer,
     )
 
@@ -271,6 +290,10 @@ def default_support_drift() -> tuple[str, ...]:
         normalizer.name
         for normalizer in build_default_normalizer().normalizers
     )
+    integrity_verifiers = tuple(
+        verifier.name
+        for verifier in build_default_integrity_verifier().verifiers
+    )
 
     expected_detectors = tuple(
         _DEFAULT_DETECTOR_PLATFORMS
@@ -280,6 +303,9 @@ def default_support_drift() -> tuple[str, ...]:
     )
     expected_normalizers = tuple(
         _DEFAULT_NORMALIZER_PLATFORMS
+    )
+    expected_integrity_verifiers = tuple(
+        _DEFAULT_INTEGRITY_VERIFIER_PLATFORMS
     )
 
     if detectors != expected_detectors:
@@ -300,6 +326,12 @@ def default_support_drift() -> tuple[str, ...]:
             "support inventory ownership"
         )
 
+    if integrity_verifiers != expected_integrity_verifiers:
+        problems.append(
+            "default integrity-verifier composition does not match "
+            "support inventory ownership"
+        )
+
     detection_platforms = _flatten_component_platforms(
         _DEFAULT_DETECTOR_PLATFORMS
     )
@@ -308,6 +340,9 @@ def default_support_drift() -> tuple[str, ...]:
     )
     normalization_platforms = _flatten_component_platforms(
         _DEFAULT_NORMALIZER_PLATFORMS
+    )
+    integrity_platforms = _flatten_component_platforms(
+        _DEFAULT_INTEGRITY_VERIFIER_PLATFORMS
     )
 
     inventory = {
@@ -341,6 +376,10 @@ def default_support_drift() -> tuple[str, ...]:
             support.normalization
             is not PlatformCapabilityKind.NONE
         )
+        has_integrity = (
+            support.integrity
+            is not PlatformCapabilityKind.NONE
+        )
 
         if has_detection != (
             platform in detection_platforms
@@ -366,10 +405,19 @@ def default_support_drift() -> tuple[str, ...]:
                 "with default normalizer routing"
             )
 
+        if has_integrity != (
+            platform in integrity_platforms
+        ):
+            problems.append(
+                f"{platform}: integrity support disagrees "
+                "with default integrity-verifier routing"
+            )
+
         operational = (
             has_detection
             or has_inspection
             or has_normalization
+            or has_integrity
         )
 
         if operational != (

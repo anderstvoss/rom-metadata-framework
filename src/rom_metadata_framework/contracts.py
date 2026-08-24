@@ -55,6 +55,25 @@ class InspectionContractError(FrameworkContractError):
         self.field = field
 
 
+class IntegrityVerifierContractError(FrameworkContractError):
+    """Raised when an integrity verifier violates its contract."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        component: str,
+        operation: str,
+        field: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            component=component,
+            operation=operation,
+        )
+        self.field = field
+
+
 class StructuralEvidenceConflictError(FrameworkContractError):
     """Raised when independent structural evidence disagrees."""
 

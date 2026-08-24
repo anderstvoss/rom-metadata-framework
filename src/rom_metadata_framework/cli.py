@@ -689,6 +689,7 @@ def _platforms_payload() -> list[dict[str, object]]:
             "detection": item.detection.value,
             "inspection": item.inspection.value,
             "normalization": item.normalization.value,
+            "integrity": item.integrity.value,
             "normalization_backend": (
                 item.normalization_backend
             ),
@@ -709,7 +710,7 @@ def _print_platforms(*, as_json: bool) -> int:
     header = (
         "PLATFORM\tDISPLAY_NAME\tMANUFACTURER"
         "\tSTATUS\tDETECT\tINSPECT\tNORMALIZE"
-        "\tRCHEEVOS_MAP"
+        "\tINTEGRITY\tRCHEEVOS_MAP"
     )
     print(header)
 
@@ -724,6 +725,7 @@ def _print_platforms(*, as_json: bool) -> int:
                     str(item["detection"]),
                     str(item["inspection"]),
                     str(item["normalization"]),
+                    str(item["integrity"]),
                     (
                         "yes"
                         if item["rcheevos_mapping"]

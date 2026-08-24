@@ -10,6 +10,7 @@ from .dolphin import (
     DolphinPlatformDetector,
 )
 from .inspection import CompositeStructuralInspector
+from .integrity_routing import CompositeIntegrityVerifier
 from .nes import NesAdapter, NesPlatformDetector
 from .ps2 import (
     Ps2PlatformDetector,
@@ -170,3 +171,22 @@ def build_default_normalizer(
             ),
         )
     )
+
+
+def build_default_integrity_verifier(
+    config: DefaultRuntimeConfig = DEFAULT_RUNTIME_CONFIG,
+) -> CompositeIntegrityVerifier:
+    """Build the standard specialist integrity-verifier router.
+
+    No specialist integrity implementations are registered yet. The empty
+    composition is intentional groundwork for future platform-specific
+    validators and remains separate from catalogue-backed release
+    verification.
+    """
+
+    if not isinstance(config, DefaultRuntimeConfig):
+        raise TypeError(
+            "config must be DefaultRuntimeConfig"
+        )
+
+    return CompositeIntegrityVerifier(())
