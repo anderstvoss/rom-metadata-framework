@@ -17,7 +17,11 @@ from .identity import RomIdentity
 from .lookup import LookupIdentity
 from .platforms import UnknownPlatformError, canonical_platform_name
 from .provenance import CatalogueEvidence
-from .resolvers import MetadataResolver, ResolvedMetadata
+from .resolvers import (
+    MetadataResolver,
+    ResolvedMetadata,
+    ResolverUnavailableError,
+)
 
 DEFAULT_PLAYMATCH_API_URL = "https://playmatch.retrorealm.dev/api/v2"
 DEFAULT_PLAYMATCH_TIMEOUT = 10.0
@@ -34,7 +38,10 @@ class PlaymatchError(RuntimeError):
     """Base error raised by the Playmatch resolver."""
 
 
-class PlaymatchRequestError(PlaymatchError):
+class PlaymatchRequestError(
+    PlaymatchError,
+    ResolverUnavailableError,
+):
     """Raised when a Playmatch request cannot be completed."""
 
 

@@ -337,6 +337,9 @@ def test_default_inspector_registers_structural_inspectors() -> None:
     from rom_metadata_framework.defaults import (
         build_default_inspector,
     )
+    from rom_metadata_framework.dolphin import (
+        DolphinStructuralInspector,
+    )
     from rom_metadata_framework.ps2 import (
         Ps2StructuralInspector,
     )
@@ -345,6 +348,9 @@ def test_default_inspector_registers_structural_inspectors() -> None:
     )
     from rom_metadata_framework.switch import (
         NintendoSwitchStructuralInspector,
+    )
+    from rom_metadata_framework.xbox import (
+        XboxStructuralInspector,
     )
     from rom_metadata_framework.xbox360 import (
         Xbox360StructuralInspector,
@@ -358,8 +364,10 @@ def test_default_inspector_registers_structural_inspectors() -> None:
     ) == (
         Ps2StructuralInspector,
         Ps3StructuralInspector,
+        DolphinStructuralInspector,
         Xbox360StructuralInspector,
         NintendoSwitchStructuralInspector,
+        XboxStructuralInspector,
     )
 
 def test_default_inspector_rejects_invalid_config() -> None:

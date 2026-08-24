@@ -69,7 +69,7 @@ _IMPLEMENTED_SUPPORT: dict[str, _RuntimePlatformSupport] = {
     "gc": _RuntimePlatformSupport(
         status=PlatformImplementationStatus.SUPPORTED,
         detection=PlatformCapabilityKind.EXTERNAL,
-        inspection=PlatformCapabilityKind.NONE,
+        inspection=PlatformCapabilityKind.EXTERNAL,
         integrity=PlatformCapabilityKind.NONE,
         normalization=PlatformCapabilityKind.EXTERNAL,
         normalization_backend="dolphin-tool",
@@ -80,7 +80,7 @@ _IMPLEMENTED_SUPPORT: dict[str, _RuntimePlatformSupport] = {
     "wii": _RuntimePlatformSupport(
         status=PlatformImplementationStatus.SUPPORTED,
         detection=PlatformCapabilityKind.EXTERNAL,
-        inspection=PlatformCapabilityKind.NONE,
+        inspection=PlatformCapabilityKind.EXTERNAL,
         integrity=PlatformCapabilityKind.NONE,
         normalization=PlatformCapabilityKind.EXTERNAL,
         normalization_backend="dolphin-tool",
@@ -112,7 +112,7 @@ _IMPLEMENTED_SUPPORT: dict[str, _RuntimePlatformSupport] = {
     "xbox": _RuntimePlatformSupport(
         status=PlatformImplementationStatus.SUPPORTED,
         detection=PlatformCapabilityKind.EXTERNAL,
-        inspection=PlatformCapabilityKind.NONE,
+        inspection=PlatformCapabilityKind.BUILT_IN,
         integrity=PlatformCapabilityKind.NONE,
         normalization=PlatformCapabilityKind.EXTERNAL,
         normalization_backend="xdvdfs",
@@ -180,8 +180,13 @@ _DEFAULT_COMPONENT_PLATFORMS: dict[
     _DefaultComponentKind.INSPECTOR: {
         "ps2": ("ps2",),
         "ps3": ("ps3",),
+        "dolphin": (
+            "gc",
+            "wii",
+        ),
         "xbox360": ("xbox360",),
         "switch": ("switch",),
+        "xbox": ("xbox",),
     },
     _DefaultComponentKind.NORMALIZER: {
         "nes": ("nes",),

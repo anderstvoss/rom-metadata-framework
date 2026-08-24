@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from typing import Protocol
 
@@ -30,6 +31,7 @@ from .release_reconciliation import (
     reconcile_release_matches,
 )
 from .representation import RepresentationIdentity
+from .resolvers import ResolverUnavailableError
 from .routing import NoSupportingNormalizerError
 from .verification import (
     DEFAULT_VERIFICATION_POLICY,
@@ -67,6 +69,62 @@ class ContentNormalizer(Protocol):
     ) -> NormalizationResult:
         """Return complete normalization evidence for one file."""
         ...
+
+
+
+class ProviderLookupStatus(StrEnum):
+    """Outcome of one release-provider lookup attempt."""
+
+    NOT_ATTEMPTED = "not_attempted"
+    MATCHED = "matched"
+    NO_MATCH = "no_match"
+    UNAVAILABLE = "unavailable"
+
+
+
+class IdentificationStrength(StrEnum):
+    """Overall strength of the resolved identification evidence."""
+
+    CATALOGUE = "catalogue"
+    LOCAL_STRONG = "local_strong"
+    LOCAL_PROBABLE = "local_probable"
+    UNRESOLVED = "unresolved"
+
+
+class IdentificationTitleSource(StrEnum):
+    """Source of the best human-readable title."""
+
+    CATALOGUE = "catalogue"
+    EMBEDDED = "embedded"
+    UNAVAILABLE = "unavailable"
+
+
+@dataclass(frozen=True, slots=True)
+class ProviderLookupOutcome:
+    """Provider availability and match state for one lookup path."""
+
+    status: ProviderLookupStatus = (
+        ProviderLookupStatus.NOT_ATTEMPTED
+    )
+    reason: str | None = None
+
+    @property
+    def attempted(self) -> bool:
+        """Whether this provider lookup was attempted."""
+
+        return (
+            self.status
+            is not ProviderLookupStatus.NOT_ATTEMPTED
+        )
+
+    @property
+    def available(self) -> bool:
+        """Whether an attempted lookup reached the provider."""
+
+        return self.status in {
+            ProviderLookupStatus.MATCHED,
+            ProviderLookupStatus.NO_MATCH,
+        }
 
 
 def _merge_structural_evidence(
@@ -108,6 +166,14 @@ class IdentificationResult:
 
     release_reconciliation: ReleaseReconciliation | None = None
     platform_reconciliation: PlatformReconciliation | None = None
+
+    physical_lookup: ProviderLookupOutcome = (
+        ProviderLookupOutcome()
+    )
+    normalized_lookup: ProviderLookupOutcome = (
+        ProviderLookupOutcome()
+    )
+    provider_name: str | None = None
 
     @property
     def canonical_match(self) -> CanonicalReleaseIdentity | None:
@@ -184,6 +250,154 @@ class IdentificationResult:
         return self.normalized_match is not None
 
 
+    @property
+    def provider_unavailable(self) -> bool:
+        """Whether any attempted provider lookup was unavailable."""
+
+        return any(
+            outcome.status
+            is ProviderLookupStatus.UNAVAILABLE
+            for outcome in (
+                self.physical_lookup,
+                self.normalized_lookup,
+            )
+        )
+
+    @property
+    def identification_strength(
+        self,
+    ) -> IdentificationStrength:
+        """Return the strongest supported identification class."""
+
+        if self.canonical_match is not None:
+            return IdentificationStrength.CATALOGUE
+
+        metadata = self.local_metadata
+        detected_platform = (
+            self.platform_detection.best is not None
+        )
+
+        if (
+            metadata is not None
+            and metadata.identifiers
+            and detected_platform
+        ):
+            return IdentificationStrength.LOCAL_STRONG
+
+        if detected_platform:
+            return IdentificationStrength.LOCAL_PROBABLE
+
+        if (
+            metadata is not None
+            and not metadata.empty
+        ):
+            return IdentificationStrength.LOCAL_PROBABLE
+
+        return IdentificationStrength.UNRESOLVED
+
+    @property
+    def title_source(
+        self,
+    ) -> IdentificationTitleSource:
+        """Return the provenance class of the best display title."""
+
+        if self.canonical_match is not None:
+            return IdentificationTitleSource.CATALOGUE
+
+        if (
+            self.local_metadata is not None
+            and self.local_metadata.titles
+        ):
+            return IdentificationTitleSource.EMBEDDED
+
+        return IdentificationTitleSource.UNAVAILABLE
+
+    @property
+    def display_title(self) -> str | None:
+        """Return catalogue title first, then embedded local title."""
+
+        canonical = self.canonical_match
+
+        if canonical is not None:
+            return canonical.title or canonical.release_name
+
+        metadata = self.local_metadata
+
+        if metadata is not None and metadata.titles:
+            return metadata.titles[0].value
+
+        return None
+
+
+
+def _local_platforms(
+    platform_detection: PlatformDetection,
+    local_metadata: LocalContentMetadata | None,
+) -> frozenset[str]:
+    """Return locally asserted canonical platform names."""
+
+    platforms: set[str] = set()
+
+    if platform_detection.best is not None:
+        platforms.add(
+            platform_detection.best.platform
+        )
+
+    if (
+        local_metadata is not None
+        and local_metadata.platform is not None
+    ):
+        platforms.add(
+            local_metadata.platform
+        )
+
+    return frozenset(platforms)
+
+
+def _should_normalize(
+    *,
+    normalizer: ContentNormalizer | None,
+    force_normalization: bool,
+    physical_match: CanonicalReleaseIdentity | None,
+    physical_lookup: ProviderLookupOutcome,
+    platform_detection: PlatformDetection,
+    local_metadata: LocalContentMetadata | None,
+) -> bool:
+    """Return whether normalized-content work adds useful evidence."""
+
+    if normalizer is None:
+        return False
+
+    if force_normalization:
+        return True
+
+    if (
+        physical_lookup.status
+        is ProviderLookupStatus.UNAVAILABLE
+    ):
+        return False
+
+    if (
+        physical_match is None
+        or not physical_match.has_authoritative_content_match
+    ):
+        return True
+
+    local_platforms = _local_platforms(
+        platform_detection,
+        local_metadata,
+    )
+
+    if not local_platforms:
+        return False
+
+    return any(
+        platform != physical_match.platform
+        for platform in local_platforms
+    )
+
+
+
 def identify_file(
     path: Path,
     *,
@@ -191,6 +405,7 @@ def identify_file(
     resolver: LookupResolver,
     normalizer: ContentNormalizer | None = None,
     inspector: StructuralInspector | None = None,
+    force_normalization: bool = False,
 ) -> IdentificationResult:
     """Identify one file while preserving independent evidence paths.
 
@@ -204,12 +419,38 @@ def identify_file(
     physical_identity = GenericHashAdapter().identify(path)
     platform_detection = detector.detect(path)
 
-    physical_match = resolver.identify(physical_identity)
+    provider_name = str(
+        getattr(
+            resolver,
+            "name",
+            type(resolver).__name__,
+        )
+    )
+
+    try:
+        physical_match = resolver.identify(
+            physical_identity
+        )
+    except ResolverUnavailableError as exc:
+        physical_match = None
+        physical_lookup = ProviderLookupOutcome(
+            status=ProviderLookupStatus.UNAVAILABLE,
+            reason=str(exc),
+        )
+    else:
+        physical_lookup = ProviderLookupOutcome(
+            status=(
+                ProviderLookupStatus.MATCHED
+                if physical_match is not None
+                else ProviderLookupStatus.NO_MATCH
+            )
+        )
 
     normalized_content = None
     physical_representation = None
     local_metadata = None
     normalized_match = None
+    normalized_lookup = ProviderLookupOutcome()
 
     if inspector is not None:
         inspection_result = inspector.inspect(path)
@@ -268,7 +509,16 @@ def identify_file(
                     field="local_metadata",
                 )
 
-    if normalizer is not None:
+    should_normalize = _should_normalize(
+        normalizer=normalizer,
+        force_normalization=force_normalization,
+        physical_match=physical_match,
+        physical_lookup=physical_lookup,
+        platform_detection=platform_detection,
+        local_metadata=local_metadata,
+    )
+
+    if should_normalize:
         try:
             normalized_result = normalizer.identify(path)
         except NoSupportingNormalizerError:
@@ -365,7 +615,26 @@ def identify_file(
                 hashes=normalized_content.hashes,
             )
 
-            normalized_match = resolver.identify_lookup(lookup)
+            try:
+                normalized_match = resolver.identify_lookup(
+                    lookup
+                )
+            except ResolverUnavailableError as exc:
+                normalized_match = None
+                normalized_lookup = ProviderLookupOutcome(
+                    status=(
+                        ProviderLookupStatus.UNAVAILABLE
+                    ),
+                    reason=str(exc),
+                )
+            else:
+                normalized_lookup = ProviderLookupOutcome(
+                    status=(
+                        ProviderLookupStatus.MATCHED
+                        if normalized_match is not None
+                        else ProviderLookupStatus.NO_MATCH
+                    )
+                )
 
     release_reconciliation = reconcile_release_matches(
         physical_match,
@@ -398,6 +667,9 @@ def identify_file(
         normalized_match=normalized_match,
         release_reconciliation=release_reconciliation,
         platform_reconciliation=reconciliation,
+        physical_lookup=physical_lookup,
+        normalized_lookup=normalized_lookup,
+        provider_name=provider_name,
     )
 
 

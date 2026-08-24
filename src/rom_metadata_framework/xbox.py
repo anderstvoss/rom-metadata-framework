@@ -22,6 +22,7 @@ from .capability import (
     capability_from_backend_status,
 )
 from .content import NormalizedContentIdentity
+from .inspection import StructuralInspectionResult
 from .local_metadata import (
     LocalContentMetadata,
     LocalIdentifier,
@@ -404,8 +405,9 @@ class XboxAdapter:
         metadata = self._local_metadata(
             certificate,
             representation=representation,
-            xbe_sha256=xbe_sha256,
         )
+
+        filesystem = BoundedXdvdfs(path)
 
         return XboxDiscIdentity(
             representation=representation,
@@ -428,6 +430,9 @@ class XboxAdapter:
                 format=("xbox-xiso" if representation == "xiso" else "xbox-full-disc"),
                 metadata={
                     "filesystem": "xdvdfs",
+                    "partition_offset": (
+                        f"0x{filesystem.volume.partition_offset:X}"
+                    ),
                 },
             ),
         )
@@ -466,7 +471,7 @@ class XboxAdapter:
         certificate: XbeCertificate,
         *,
         representation: str,
-        xbe_sha256: str,
+        xbe_sha256: str | None = None,
     ) -> LocalContentMetadata:
         def provenance(
             method: str,
@@ -488,20 +493,26 @@ class XboxAdapter:
                 ),
             ),
             LocalIdentifier(
-                namespace=(XBOX_FORMATTED_TITLE_ID_NAMESPACE),
+                namespace=(
+                    XBOX_FORMATTED_TITLE_ID_NAMESPACE
+                ),
                 value=certificate.formatted_title_id,
                 provenance=provenance(
                     "certificate-title-id-formatted",
                 ),
             ),
-            LocalIdentifier(
-                namespace=XBE_SHA256_NAMESPACE,
-                value=xbe_sha256,
-                provenance=provenance(
-                    "default-xbe-sha256",
-                ),
-            ),
         ]
+
+        if xbe_sha256 is not None:
+            identifiers.append(
+                LocalIdentifier(
+                    namespace=XBE_SHA256_NAMESPACE,
+                    value=xbe_sha256,
+                    provenance=provenance(
+                        "default-xbe-sha256",
+                    ),
+                )
+            )
 
         identifiers.extend(
             LocalIdentifier(
@@ -589,6 +600,120 @@ class XboxAdapter:
                 "xbe_version": str(certificate.version),
             },
         )
+
+
+
+class XboxStructuralInspector:
+    """Extract original-Xbox XBE metadata using bounded XDVDFS reads."""
+
+    name = "xbox"
+
+    _XBE_BASE_HEADER_SIZE = 0x11C
+    _XBE_CERTIFICATE_MIN_SIZE = 0xB0
+    _XBE_MAX_PREFIX_SIZE = 1024 * 1024
+
+    def inspect(
+        self,
+        path: Path,
+    ) -> StructuralInspectionResult | None:
+        """Return bounded original-Xbox structural evidence."""
+
+        path = Path(path)
+
+        try:
+            filesystem = BoundedXdvdfs(path)
+
+            entry = filesystem.find(
+                "/default.xbe"
+            )
+
+            if (
+                entry is None
+                or entry.directory
+                or entry.size < self._XBE_BASE_HEADER_SIZE
+            ):
+                return None
+
+            header = filesystem.read_file_range(
+                "/default.xbe",
+                offset=0,
+                size=self._XBE_BASE_HEADER_SIZE,
+                max_size=self._XBE_BASE_HEADER_SIZE,
+            )
+
+            if header[:4] != XBE_MAGIC:
+                return None
+
+            image_base = _u32(
+                header,
+                0x104,
+            )
+            certificate_address = _u32(
+                header,
+                0x118,
+            )
+            certificate_offset = (
+                certificate_address - image_base
+            )
+
+            if certificate_offset < 0:
+                return None
+
+            required_size = (
+                certificate_offset
+                + self._XBE_CERTIFICATE_MIN_SIZE
+            )
+
+            if (
+                required_size > entry.size
+                or required_size
+                > self._XBE_MAX_PREFIX_SIZE
+            ):
+                return None
+
+            xbe_prefix = filesystem.read_file_range(
+                "/default.xbe",
+                offset=0,
+                size=required_size,
+                max_size=self._XBE_MAX_PREFIX_SIZE,
+            )
+
+            certificate = parse_xbe_certificate(
+                xbe_prefix
+            )
+
+        except (
+            OSError,
+            XboxResponseError,
+            XdvdfsFormatError,
+        ):
+            return None
+
+        representation = XboxAdapter._representation(
+            path
+        )
+
+        return StructuralInspectionResult(
+            physical_representation=RepresentationIdentity(
+                kind="disc-image",
+                format=(
+                    "xbox-xiso"
+                    if representation == "xiso"
+                    else "xbox-full-disc"
+                ),
+                metadata={
+                    "filesystem": "xdvdfs",
+                    "partition_offset": (
+                        f"0x{filesystem.volume.partition_offset:X}"
+                    ),
+                },
+            ),
+            local_metadata=XboxAdapter._local_metadata(
+                certificate,
+                representation=representation,
+            ),
+        )
+
 
 
 def _has_original_xbox_executable(

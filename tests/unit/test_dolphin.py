@@ -67,17 +67,7 @@ def write_fake_dolphin(
         "  exit 0\n"
         "fi\n"
         'if [ "$1" = "convert" ]; then\n'
-        '  output=""\n'
-        '  while [ "$#" -gt 0 ]; do\n'
-        '    if [ "$1" = "-o" ]; then\n'
-        "      shift\n"
-        '      output="$1"\n'
-        "    fi\n"
-        "    shift\n"
-        "  done\n"
-        '  [ -n "$output" ] || exit 4\n'
-        "  printf '%s' 'synthetic-canonical-disc' > \"$output\"\n"
-        "  exit 0\n"
+        "  exit 97\n"
         "fi\n"
         'if [ "$1" = "verify" ]; then\n'
         '  while [ "$#" -gt 0 ]; do\n'
@@ -140,7 +130,7 @@ def test_gamecube_disc_identity(tmp_path: Path) -> None:
     assert identity.content.hashes.crc32 == HASHES["crc32"]
     assert identity.content.hashes.md5 == HASHES["md5"]
     assert identity.content.hashes.sha1 == HASHES["sha1"]
-    assert identity.content.hashes.sha256 == HASHES["sha256"]
+    assert identity.content.hashes.sha256 is None
     assert (
         identity.content.specialized_identifiers["retroachievements"]
         == HASHES["rchash"]
@@ -157,6 +147,28 @@ def test_gamecube_disc_identity(tmp_path: Path) -> None:
 
     assert identity.container_metadata["block_size"] == "131072"
     assert identity.container_metadata["compression_method"] == "Zstandard"
+
+
+def test_dolphin_identity_uses_direct_disc_hashes_without_conversion(
+    tmp_path: Path,
+) -> None:
+    helper = write_fake_dolphin(
+        tmp_path / "dolphin-tool",
+        header=GC_HEADER,
+    )
+
+    image = tmp_path / "disc.rvz"
+    image.write_bytes(b"synthetic-rvz")
+
+    identity = DolphinAdapter(
+        executable=str(helper),
+        temporary_directory=tmp_path,
+    ).identify(image)
+
+    assert identity.content.hashes.crc32 == HASHES["crc32"]
+    assert identity.content.hashes.md5 == HASHES["md5"]
+    assert identity.content.hashes.sha1 == HASHES["sha1"]
+    assert identity.content.hashes.sha256 is None
 
 
 def test_wii_disc_identity(tmp_path: Path) -> None:
@@ -597,3 +609,91 @@ def test_dolphin_runtime_capability_uses_header_health_probe(
     assert capability.status is RuntimeCapabilityStatus.READY
     assert capability.ready
     assert capability.version is None
+
+
+def test_dolphin_structural_inspector_avoids_normalization(
+    tmp_path: Path,
+) -> None:
+    from rom_metadata_framework.dolphin import (
+        DolphinStructuralInspector,
+    )
+
+    helper = tmp_path / "dolphin-tool"
+
+    helper.write_text(
+        "#!/bin/sh\n"
+        'if [ "$1" = "header" ]; then\n'
+        f"  printf '%s\\n' '{json.dumps(WII_HEADER)}'\n"
+        "  exit 0\n"
+        "fi\n"
+        'if [ "$1" = "convert" ]; then\n'
+        "  exit 97\n"
+        "fi\n"
+        'if [ "$1" = "verify" ]; then\n'
+        "  exit 98\n"
+        "fi\n"
+        "exit 2\n"
+    )
+    helper.chmod(0o755)
+
+    image = tmp_path / "disc.rvz"
+    image.write_bytes(b"synthetic-rvz")
+
+    result = DolphinStructuralInspector(
+        executable=str(helper),
+    ).inspect(image)
+
+    assert result is not None
+    assert result.local_metadata is not None
+    assert result.local_metadata.platform == "wii"
+
+    ids = {
+        item.namespace: item.value
+        for item in result.local_metadata.identifiers
+    }
+
+    assert ids["nintendo-game-id"] == "RMCE01"
+    assert (
+        result.local_metadata.titles[0].value
+        == "MarioKartWii"
+    )
+    assert (
+        result.local_metadata.release_revisions[0].value
+        == "0"
+    )
+    assert (
+        result.local_metadata.regions[0].value
+        == "NTSC-U"
+    )
+
+    representation = result.physical_representation
+
+    assert representation is not None
+    assert representation.kind == "disc-image"
+    assert representation.format == "rvz"
+    assert (
+        representation.metadata["compression_method"]
+        == "Zstandard"
+    )
+
+
+def test_dolphin_structural_inspector_returns_none_on_failure(
+    tmp_path: Path,
+) -> None:
+    from rom_metadata_framework.dolphin import (
+        DolphinStructuralInspector,
+    )
+
+    helper = tmp_path / "dolphin-tool"
+    helper.write_text("#!/bin/sh\nexit 2\n")
+    helper.chmod(0o755)
+
+    image = tmp_path / "bad.rvz"
+    image.write_bytes(b"not-disc")
+
+    assert (
+        DolphinStructuralInspector(
+            executable=str(helper),
+        ).inspect(image)
+        is None
+    )
