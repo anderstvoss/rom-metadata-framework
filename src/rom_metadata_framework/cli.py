@@ -16,10 +16,18 @@ from .defaults import (
     build_default_inspector,
     build_default_normalizer,
 )
-from .identification import identify_file
+from .identification import (
+    IdentificationVerification,
+    identify_file,
+    verify_identification,
+)
 from .inspection import (
     AmbiguousStructuralInspectorError,
     StructuralInspectionResult,
+)
+from .naming import (
+    NamingPolicy,
+    RenamePlan,
 )
 from .platforms import platform_display_name
 from .playmatch import (
@@ -2071,6 +2079,184 @@ def _verify_path(
 
 
 
+def _rename_plan_status(
+    result: object,
+    plan: RenamePlan,
+    verification: IdentificationVerification,
+) -> str:
+    """Return the concise CLI status for one rename plan."""
+
+    if plan.safe_to_apply:
+        return "safe"
+
+    if (
+        bool(
+            getattr(
+                result,
+                "has_platform_conflict",
+                False,
+            )
+        )
+        or bool(plan.conflicts)
+        or verification.has_known_bad
+        or verification.has_conflicts
+    ):
+        return "conflict"
+
+    return "unsafe"
+
+
+def _rename_plan_payload(
+    path: Path,
+    *,
+    plan: RenamePlan | None,
+    status: str,
+) -> dict[str, object]:
+    """Project one non-mutating canonical rename plan."""
+
+    payload: dict[str, object] = {
+        "path": str(path),
+        "status": status,
+    }
+
+    if plan is None:
+        return payload
+
+    payload.update(
+        {
+            "source_name": plan.source_name,
+            "destination_name": plan.destination_name,
+            "operation": plan.operation,
+            "safe_to_apply": plan.safe_to_apply,
+            "content_known_good": plan.content_known_good,
+            "representation_known_good": (
+                plan.representation_known_good
+            ),
+            "conflicts": list(plan.conflicts),
+        }
+    )
+
+    return payload
+
+
+def _print_rename_plan_text(
+    payload: Mapping[str, object],
+) -> None:
+    """Render a concise non-mutating rename plan."""
+
+    destination = payload.get(
+        "destination_name"
+    )
+
+    if destination is None:
+        print("Proposed filename: unavailable")
+        print("Safe to apply: no")
+        return
+
+    print(
+        "Proposed filename: "
+        + str(destination)
+    )
+    print(
+        "Operation: "
+        + str(payload["operation"])
+    )
+    print(
+        "Safe to apply: "
+        + (
+            "yes"
+            if payload["safe_to_apply"]
+            else "no"
+        )
+    )
+
+    conflicts = payload.get(
+        "conflicts",
+        []
+    )
+
+    if isinstance(conflicts, list):
+        for conflict in conflicts:
+            print(
+                "Conflict: "
+                + str(conflict)
+            )
+
+
+def _plan_rename_path(
+    path: Path,
+    *,
+    as_json: bool,
+    normalize: bool,
+) -> int:
+    """Identify one file and emit a non-mutating canonical rename plan."""
+
+    result, error_code = _run_identification_workflow(
+        path,
+        as_json=as_json,
+        normalize=normalize,
+        conflict_context="rename planning",
+    )
+
+    if error_code is not None:
+        return error_code
+
+    assert result is not None
+
+    if result.canonical_match is None:
+        payload = _rename_plan_payload(
+            path,
+            plan=None,
+            status="unresolved",
+        )
+
+        if as_json:
+            _emit_json(payload)
+        else:
+            _print_rename_plan_text(
+                payload
+            )
+
+        return EXIT_UNRESOLVED
+
+    verification = verify_identification(
+        result
+    )
+
+    plan = NamingPolicy().plan_identification_rename(
+        path.name,
+        result,
+        verification=verification,
+    )
+
+    status = _rename_plan_status(
+        result,
+        plan,
+        verification,
+    )
+
+    payload = _rename_plan_payload(
+        path,
+        plan=plan,
+        status=status,
+    )
+
+    if as_json:
+        _emit_json(payload)
+    else:
+        _print_rename_plan_text(
+            payload
+        )
+
+    if status == "safe":
+        return EXIT_OK
+
+    if status == "conflict":
+        return EXIT_CONFLICT
+
+    return EXIT_UNRESOLVED
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the public command-line parser."""
 
@@ -2171,6 +2357,33 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
 
+    plan_rename = subparsers.add_parser(
+        "plan-rename",
+        help=(
+            "identify a file and produce a non-mutating "
+            "canonical rename plan"
+        ),
+    )
+    plan_rename.add_argument(
+        "path",
+        type=Path,
+        help="ROM, package, or disc-image path",
+    )
+    plan_rename.add_argument(
+        "--json",
+        action="store_true",
+        dest="as_json",
+        help="emit machine-readable JSON",
+    )
+    plan_rename.add_argument(
+        "--no-normalize",
+        action="store_true",
+        help=(
+            "skip canonical-content normalization "
+            "and normalized provider lookup"
+        ),
+    )
+
     verify = subparsers.add_parser(
         "verify",
         help=(
@@ -2237,6 +2450,13 @@ def main(
             normalize=not args.no_normalize,
             complete=args.complete,
             include_hashes=args.hashes,
+        )
+
+    if args.command == "plan-rename":
+        return _plan_rename_path(
+            args.path,
+            as_json=args.as_json,
+            normalize=not args.no_normalize,
         )
 
     if args.command == "verify":

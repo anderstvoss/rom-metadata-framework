@@ -13,6 +13,7 @@ rom-metadata platforms
 rom-metadata capabilities
 rom-metadata inspect PATH
 rom-metadata identify PATH
+rom-metadata plan-rename PATH
 rom-metadata verify PATH
 ~~~
 
@@ -201,6 +202,52 @@ A catalogue match is not required for every successful identification. Strong
 local structural identification can return success even when the catalogue
 provider is unavailable or has no match. Probable or unresolved local evidence
 continues to use the unresolved exit status.
+
+## `plan-rename`
+
+~~~text
+rom-metadata plan-rename PATH
+rom-metadata plan-rename PATH --json
+rom-metadata plan-rename PATH --no-normalize
+~~~
+
+Runs the standard identification workflow and produces a proposed canonical
+filename using the structured naming policy.
+
+`plan-rename` is deliberately non-mutating. It does not copy, rename, move,
+replace, or delete the source file. The returned `operation` field describes
+the naming plan's default future file-operation policy; `copy` does not mean
+that this command performs a copy.
+
+The command emits a filename rather than a destination filesystem path. The
+source file's existing extension is preserved.
+
+A canonical release match is required before a filename can be proposed.
+Artifact-local identifiers, region, revision, and disc evidence are incorporated
+only under the structured naming rules documented in
+[Architecture](ARCHITECTURE.md).
+
+Human output includes the proposed filename, planned operation, whether the plan
+is safe to apply, and any explicit conflicts.
+
+The concise JSON `status` field uses:
+
+- `safe`: the canonical naming safety policy is satisfied;
+- `unsafe`: a filename can be proposed, but verification is not strong enough
+  to authorize canonical naming;
+- `conflict`: known-bad or conflicting evidence prevents safe canonical naming;
+- `unresolved`: no canonical release was resolved, so no filename can be
+  proposed.
+
+`safe` returns exit code `0`. `unsafe` and `unresolved` return code `3`.
+`conflict` returns code `4`. Operational failures continue to return code `5`.
+
+`--no-normalize` has the same meaning as for `identify`: it disables
+canonical-content normalization and normalized provider lookup while retaining
+physical hashing and provider lookup.
+
+There are intentionally no `--copy`, `--replace`, or filesystem-mutation
+options in this command.
 
 ## `verify`
 
