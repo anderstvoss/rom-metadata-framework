@@ -8,6 +8,7 @@ from .dolphin import (
     DOLPHIN_EXECUTABLE,
     DolphinAdapter,
     DolphinPlatformDetector,
+    DolphinStructuralInspector,
 )
 from .inspection import CompositeStructuralInspector
 from .integrity_routing import CompositeIntegrityVerifier
@@ -29,6 +30,7 @@ from .xbox import (
     XDVDFS_EXECUTABLE,
     XboxAdapter,
     XboxPlatformDetector,
+    XboxStructuralInspector,
 )
 from .xbox360 import (
     Xbox360PlatformDetector,
@@ -132,8 +134,12 @@ def build_default_inspector(
         (
             Ps2StructuralInspector(),
             Ps3StructuralInspector(),
+            DolphinStructuralInspector(
+                executable=config.dolphin_executable,
+            ),
             Xbox360StructuralInspector(),
             NintendoSwitchStructuralInspector(),
+            XboxStructuralInspector(),
         )
     )
 

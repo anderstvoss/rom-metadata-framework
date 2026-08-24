@@ -13,7 +13,10 @@ from rom_metadata_framework.playmatch import (
     PlaymatchResolver,
     PlaymatchResponseError,
 )
-from rom_metadata_framework.resolvers import MetadataResolver
+from rom_metadata_framework.resolvers import (
+    MetadataResolver,
+    ResolverUnavailableError,
+)
 
 
 class FakeResponse:
@@ -194,6 +197,12 @@ def test_playmatch_reports_http_error(
         PlaymatchResolver().resolve(identity())
 
     assert error.closed
+
+
+    assert issubclass(
+        PlaymatchRequestError,
+        ResolverUnavailableError,
+    )
 
 
 def test_playmatch_rejects_duplicate_provider_mapping(

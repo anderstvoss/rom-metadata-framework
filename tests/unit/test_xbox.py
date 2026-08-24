@@ -653,3 +653,286 @@ def test_original_xbox_detector_requires_xbe_after_backend_probe(
 
     assert detection.best is not None
     assert detection.best.platform == "xbox"
+
+
+def test_xbox_normalizer_and_structural_inspector_evidence_align(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    from types import SimpleNamespace
+
+    from rom_metadata_framework.xbox import (
+        XboxAdapter,
+        XboxStructuralInspector,
+    )
+
+    path = tmp_path / "game.iso"
+    path.write_bytes(bytes(0x12000))
+
+    xbe = make_xbe()
+    partition_offset = 0x0FD90000
+
+    class FakeFilesystem:
+        volume = SimpleNamespace(
+            partition_offset=partition_offset,
+        )
+
+        def __init__(self, candidate):
+            assert candidate == path
+
+        def find(self, candidate):
+            assert candidate == "/default.xbe"
+
+            return SimpleNamespace(
+                directory=False,
+                size=len(xbe),
+            )
+
+        def read_file_range(
+            self,
+            candidate,
+            *,
+            offset,
+            size,
+            max_size,
+        ):
+            assert candidate == "/default.xbe"
+            assert offset == 0
+            assert size <= max_size
+
+            return xbe[:size]
+
+    monkeypatch.setattr(
+        "rom_metadata_framework.xbox.BoundedXdvdfs",
+        FakeFilesystem,
+    )
+
+    monkeypatch.setattr(
+        "rom_metadata_framework.xbox.XboxAdapter._representation",
+        staticmethod(
+            lambda candidate: "xiso"
+        ),
+    )
+
+    inspector_result = XboxStructuralInspector().inspect(path)
+
+    assert inspector_result is not None
+
+    adapter = XboxAdapter()
+
+    monkeypatch.setattr(
+        adapter,
+        "probe",
+        lambda candidate: SimpleNamespace(
+            supported=True,
+        ),
+    )
+
+    monkeypatch.setattr(
+        adapter,
+        "_checksum",
+        lambda candidate: "1" * 64,
+    )
+
+    class FakeTemporaryDirectory:
+        def __init__(self, *args, **kwargs):
+            self.path = tmp_path / "normalizer-work"
+
+        def __enter__(self):
+            self.path.mkdir(
+                exist_ok=True,
+            )
+            return str(self.path)
+
+        def __exit__(self, *args):
+            return False
+
+    monkeypatch.setattr(
+        "rom_metadata_framework.xbox.TemporaryDirectory",
+        FakeTemporaryDirectory,
+    )
+
+    def fake_run_backend(backend, args):
+        if args[0] == "copy-out":
+            destination = Path(args[-1])
+            destination.write_bytes(xbe)
+
+            return SimpleNamespace(
+                stdout="",
+                stderr="",
+            )
+
+        raise AssertionError(
+            f"unexpected backend call: {args}"
+        )
+
+    monkeypatch.setattr(
+        "rom_metadata_framework.xbox.run_backend",
+        fake_run_backend,
+    )
+
+    normalized = adapter.identify(path)
+
+    assert (
+        normalized.physical_representation
+        == inspector_result.physical_representation
+    )
+
+    assert (
+        normalized.local_metadata
+        == inspector_result.local_metadata
+    )
+
+    local_ids = {
+        item.namespace: item.value
+        for item in normalized.local_metadata.identifiers
+    }
+
+    assert "xbox-xbe-sha256" not in local_ids
+
+    assert (
+        normalized.content.specialized_identifiers[
+            "xbox-xbe-sha256"
+        ]
+        == normalized.content.metadata["xbe_sha256"]
+    )
+
+    assert (
+        normalized.physical_representation.metadata[
+            "partition_offset"
+        ]
+        == "0xFD90000"
+    )
+
+
+def test_xbox_structural_inspector_uses_bounded_xbe_prefix(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    from types import SimpleNamespace
+
+    from rom_metadata_framework.xbox import (
+        XboxStructuralInspector,
+    )
+
+    path = tmp_path / "game.iso"
+    path.write_bytes(bytes(0x12000))
+
+    xbe = make_xbe()
+    reads = []
+
+    class FakeFilesystem:
+        volume = SimpleNamespace(
+            partition_offset=0x0FD90000,
+        )
+
+        def __init__(self, candidate):
+            assert candidate == path
+
+        def find(self, candidate):
+            assert candidate == "/default.xbe"
+
+            return SimpleNamespace(
+                directory=False,
+                size=len(xbe),
+            )
+
+        def read_file_range(
+            self,
+            candidate,
+            *,
+            offset,
+            size,
+            max_size,
+        ):
+            assert candidate == "/default.xbe"
+            assert offset == 0
+
+            reads.append(
+                (size, max_size)
+            )
+
+            return xbe[:size]
+
+    monkeypatch.setattr(
+        "rom_metadata_framework.xbox.BoundedXdvdfs",
+        FakeFilesystem,
+    )
+
+    monkeypatch.setattr(
+        "rom_metadata_framework.xbox.XboxAdapter._representation",
+        lambda candidate: "xiso",
+    )
+
+    result = XboxStructuralInspector().inspect(path)
+
+    assert result is not None
+    assert result.local_metadata is not None
+
+    metadata = result.local_metadata
+
+    ids = {
+        item.namespace: item.value
+        for item in metadata.identifiers
+    }
+
+    assert ids["xbox-title-id"] == "4D530004"
+    assert ids["xbox-title-id-formatted"] == "MS-004"
+    assert "xbox-xbe-sha256" not in ids
+
+    assert metadata.titles[0].value == "Halo"
+    assert metadata.disc_numbers[0].value == 0
+    assert metadata.executable_versions[0].value == "9"
+    assert metadata.regions[0].value == "north-america"
+
+    representation = result.physical_representation
+
+    assert representation is not None
+    assert representation.format == "xbox-xiso"
+    assert (
+        representation.metadata["partition_offset"]
+        == "0xFD90000"
+    )
+
+    assert len(reads) == 2
+    assert reads[0][0] == 0x11C
+
+    certificate_offset = 0x178
+    assert reads[1][0] == certificate_offset + 0xB0
+
+    assert all(
+        size <= max_size
+        for size, max_size in reads
+    )
+
+
+def test_xbox_structural_inspector_rejects_missing_xbe(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    from types import SimpleNamespace
+
+    from rom_metadata_framework.xbox import (
+        XboxStructuralInspector,
+    )
+
+    path = tmp_path / "game.iso"
+    path.write_bytes(b"candidate")
+
+    class FakeFilesystem:
+        volume = SimpleNamespace(
+            partition_offset=0,
+        )
+
+        def __init__(self, candidate):
+            pass
+
+        def find(self, candidate):
+            return None
+
+    monkeypatch.setattr(
+        "rom_metadata_framework.xbox.BoundedXdvdfs",
+        FakeFilesystem,
+    )
+
+    assert XboxStructuralInspector().inspect(path) is None

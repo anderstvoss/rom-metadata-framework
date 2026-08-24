@@ -8,6 +8,11 @@ from typing import Protocol, runtime_checkable
 from .identity import RomIdentity
 
 
+class ResolverUnavailableError(RuntimeError):
+    """Raised when a resolver cannot currently be reached or used."""
+
+
+
 @dataclass(frozen=True, slots=True)
 class ResolvedMetadata:
     """Human-readable metadata returned by a resolver."""

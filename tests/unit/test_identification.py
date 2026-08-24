@@ -13,9 +13,15 @@ from rom_metadata_framework.detection import (
 )
 from rom_metadata_framework.identification import (
     IdentificationResult,
+    IdentificationStrength,
+    IdentificationTitleSource,
+    ProviderLookupStatus,
     identify_file,
 )
 from rom_metadata_framework.identity import HashSet, RomIdentity
+from rom_metadata_framework.resolvers import (
+    ResolverUnavailableError,
+)
 
 
 class FakeDetector:
@@ -60,11 +66,14 @@ class FakeNormalizer:
         hashes: HashSet,
     ) -> None:
         self.hashes = hashes
+        self.identify_calls = 0
 
     def identify(
         self,
         path: Path,
     ) -> FakeNormalizedResult:
+        self.identify_calls += 1
+
         return FakeNormalizedResult(
             NormalizedContentIdentity(
                 kind="cartridge",
@@ -74,6 +83,8 @@ class FakeNormalizer:
 
 
 class FakeResolver:
+    name = "fake"
+
     def __init__(
         self,
         *,
@@ -115,6 +126,30 @@ def release(
         platform=platform,
         source=source,
         source_id=source_id,
+    )
+
+
+def authoritative_release(
+    *,
+    platform: str = "nes",
+    release_name: str = "Example Game (USA)",
+) -> CanonicalReleaseIdentity:
+    from rom_metadata_framework.canonical import (
+        IdentificationEvidence,
+    )
+
+    return CanonicalReleaseIdentity(
+        release_name=release_name,
+        platform=platform,
+        source="test",
+        source_id="authoritative",
+        evidence=(
+            IdentificationEvidence(
+                source="test",
+                method="SHA1",
+                authoritative=True,
+            ),
+        ),
     )
 
 
@@ -189,6 +224,630 @@ def test_normalized_match_is_fallback(
 
     assert resolver.last_lookup is not None
     assert resolver.last_lookup.hashes.sha1 == normalized_hash
+
+
+
+def test_physical_provider_unavailable_preserves_local_workflow(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "local-only.bin"
+    path.write_bytes(b"physical-bytes")
+
+    class UnavailableResolver(FakeResolver):
+        def identify(self, identity):
+            self.identify_calls += 1
+
+            raise ResolverUnavailableError(
+                "provider unavailable"
+            )
+
+    resolver = UnavailableResolver(
+        physical=None,
+        normalized=None,
+    )
+
+    result = identify_file(
+        path,
+        detector=FakeDetector("nes"),
+        resolver=resolver,
+    )
+
+    assert result.physical_match is None
+    assert result.canonical_match is None
+
+    assert result.platform_detection.best is not None
+    assert (
+        result.platform_detection.best.platform
+        == "nes"
+    )
+
+    assert (
+        result.physical_lookup.status
+        is ProviderLookupStatus.UNAVAILABLE
+    )
+    assert (
+        result.physical_lookup.reason
+        == "provider unavailable"
+    )
+    assert (
+        result.normalized_lookup.status
+        is ProviderLookupStatus.NOT_ATTEMPTED
+    )
+
+    assert result.provider_unavailable
+    assert result.provider_name == "fake"
+
+
+def test_normalized_provider_unavailable_preserves_content_evidence(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "normalized.bin"
+    path.write_bytes(b"physical-bytes")
+
+    class NormalizedUnavailableResolver(FakeResolver):
+        def identify_lookup(self, lookup):
+            self.lookup_calls += 1
+            self.last_lookup = lookup
+
+            raise ResolverUnavailableError(
+                "normalized lookup unavailable"
+            )
+
+    resolver = NormalizedUnavailableResolver(
+        physical=None,
+        normalized=None,
+    )
+
+    normalized_hash = (
+        "89abcdef0123456789abcdef"
+        "0123456789abcdef"
+    )
+
+    result = identify_file(
+        path,
+        detector=FakeDetector("nes"),
+        resolver=resolver,
+        normalizer=FakeNormalizer(
+            HashSet(
+                sha1=normalized_hash,
+            )
+        ),
+    )
+
+    assert result.normalized_content is not None
+    assert (
+        result.normalized_content.hashes.sha1
+        == normalized_hash
+    )
+
+    assert (
+        result.physical_lookup.status
+        is ProviderLookupStatus.NO_MATCH
+    )
+    assert (
+        result.normalized_lookup.status
+        is ProviderLookupStatus.UNAVAILABLE
+    )
+    assert (
+        result.normalized_lookup.reason
+        == "normalized lookup unavailable"
+    )
+
+    assert result.provider_unavailable
+
+
+def test_lookup_outcomes_distinguish_match_and_no_match(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "matched.nes"
+    path.write_bytes(b"physical-bytes")
+
+    result = identify_file(
+        path,
+        detector=FakeDetector("nes"),
+        resolver=FakeResolver(
+            physical=release(),
+            normalized=None,
+        ),
+        normalizer=FakeNormalizer(
+            HashSet(
+                sha1=(
+                    "0123456789abcdef0123456789abcdef"
+                    "01234567"
+                ),
+            )
+        ),
+    )
+
+    assert (
+        result.physical_lookup.status
+        is ProviderLookupStatus.MATCHED
+    )
+    assert (
+        result.normalized_lookup.status
+        is ProviderLookupStatus.NO_MATCH
+    )
+
+    assert not result.provider_unavailable
+
+
+
+def test_lookup_outcome_not_attempted_is_not_available() -> None:
+    from rom_metadata_framework.identification import (
+        ProviderLookupOutcome,
+    )
+
+    outcome = ProviderLookupOutcome()
+
+    assert not outcome.attempted
+    assert not outcome.available
+
+
+def test_catalogue_match_has_catalogue_strength_and_title(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "catalogued.nes"
+    path.write_bytes(b"physical-bytes")
+
+    result = identify_file(
+        path,
+        detector=FakeDetector("nes"),
+        resolver=FakeResolver(
+            physical=release(
+                release_name="Canonical Game (USA)",
+            ),
+            normalized=None,
+        ),
+    )
+
+    assert (
+        result.identification_strength
+        is IdentificationStrength.CATALOGUE
+    )
+    assert (
+        result.title_source
+        is IdentificationTitleSource.CATALOGUE
+    )
+    assert result.display_title == "Canonical Game (USA)"
+
+
+def test_native_identifier_produces_strong_local_identification(
+    tmp_path: Path,
+) -> None:
+    from rom_metadata_framework.inspection import (
+        StructuralInspectionResult,
+    )
+    from rom_metadata_framework.local_metadata import (
+        LocalContentMetadata,
+        LocalIdentifier,
+        LocalMetadataProvenance,
+        LocalMetadataValue,
+    )
+
+    class LocalInspector:
+        def inspect(self, path: Path):
+            provenance = LocalMetadataProvenance(
+                source="synthetic",
+                method="disc-header",
+            )
+
+            return StructuralInspectionResult(
+                local_metadata=LocalContentMetadata(
+                    platform="wii",
+                    titles=(
+                        LocalMetadataValue(
+                            value="INTERNAL GAME NAME",
+                            provenance=provenance,
+                        ),
+                    ),
+                    identifiers=(
+                        LocalIdentifier(
+                            namespace="nintendo-game-id",
+                            value="ABCE01",
+                            provenance=provenance,
+                        ),
+                    ),
+                )
+            )
+
+    class UnavailableResolver(FakeResolver):
+        def identify(self, identity):
+            self.identify_calls += 1
+            raise ResolverUnavailableError(
+                "provider unavailable"
+            )
+
+    path = tmp_path / "local.rvz"
+    path.write_bytes(b"physical-bytes")
+
+    result = identify_file(
+        path,
+        detector=FakeDetector("wii"),
+        resolver=UnavailableResolver(
+            physical=None,
+            normalized=None,
+        ),
+        inspector=LocalInspector(),
+    )
+
+    assert result.canonical_match is None
+    assert (
+        result.identification_strength
+        is IdentificationStrength.LOCAL_STRONG
+    )
+    assert (
+        result.title_source
+        is IdentificationTitleSource.EMBEDDED
+    )
+    assert result.display_title == "INTERNAL GAME NAME"
+    assert result.provider_unavailable
+
+
+def test_embedded_metadata_without_identifier_is_local_probable(
+    tmp_path: Path,
+) -> None:
+    from rom_metadata_framework.inspection import (
+        StructuralInspectionResult,
+    )
+    from rom_metadata_framework.local_metadata import (
+        LocalContentMetadata,
+        LocalMetadataProvenance,
+        LocalMetadataValue,
+    )
+
+    class LocalInspector:
+        def inspect(self, path: Path):
+            provenance = LocalMetadataProvenance(
+                source="synthetic",
+                method="header",
+            )
+
+            return StructuralInspectionResult(
+                local_metadata=LocalContentMetadata(
+                    platform="nes",
+                    titles=(
+                        LocalMetadataValue(
+                            value="Embedded Game",
+                            provenance=provenance,
+                        ),
+                    ),
+                )
+            )
+
+    path = tmp_path / "probable.bin"
+    path.write_bytes(b"physical-bytes")
+
+    result = identify_file(
+        path,
+        detector=FakeDetector("nes"),
+        resolver=FakeResolver(
+            physical=None,
+            normalized=None,
+        ),
+        inspector=LocalInspector(),
+    )
+
+    assert (
+        result.identification_strength
+        is IdentificationStrength.LOCAL_PROBABLE
+    )
+    assert (
+        result.title_source
+        is IdentificationTitleSource.EMBEDDED
+    )
+    assert result.display_title == "Embedded Game"
+
+
+def test_platform_detection_without_metadata_is_local_probable(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "detected.bin"
+    path.write_bytes(b"physical-bytes")
+
+    result = identify_file(
+        path,
+        detector=FakeDetector("nes"),
+        resolver=FakeResolver(
+            physical=None,
+            normalized=None,
+        ),
+    )
+
+    assert (
+        result.identification_strength
+        is IdentificationStrength.LOCAL_PROBABLE
+    )
+    assert (
+        result.title_source
+        is IdentificationTitleSource.UNAVAILABLE
+    )
+    assert result.display_title is None
+
+
+def test_no_provider_or_local_evidence_is_unresolved(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "unknown.bin"
+    path.write_bytes(b"physical-bytes")
+
+    result = identify_file(
+        path,
+        detector=FakeDetector(None),
+        resolver=FakeResolver(
+            physical=None,
+            normalized=None,
+        ),
+    )
+
+    assert (
+        result.identification_strength
+        is IdentificationStrength.UNRESOLVED
+    )
+    assert (
+        result.title_source
+        is IdentificationTitleSource.UNAVAILABLE
+    )
+    assert result.display_title is None
+
+
+def test_authoritative_physical_match_skips_normalization(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "authoritative.nes"
+    path.write_bytes(b"physical-bytes")
+
+    physical = authoritative_release()
+
+    normalizer = FakeNormalizer(
+        HashSet(
+            sha1=(
+                "0123456789abcdef0123456789abcdef"
+                "01234567"
+            ),
+        )
+    )
+
+    resolver = FakeResolver(
+        physical=physical,
+        normalized=release(),
+    )
+
+    result = identify_file(
+        path,
+        detector=FakeDetector("nes"),
+        resolver=resolver,
+        normalizer=normalizer,
+    )
+
+    assert result.physical_match is physical
+    assert result.normalized_content is None
+    assert result.normalized_match is None
+
+    assert normalizer.identify_calls == 0
+    assert resolver.lookup_calls == 0
+
+    assert (
+        result.normalized_lookup.status
+        is ProviderLookupStatus.NOT_ATTEMPTED
+    )
+
+
+def test_force_normalization_overrides_authoritative_skip(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "authoritative-forced.nes"
+    path.write_bytes(b"physical-bytes")
+
+    normalized = release()
+
+    normalizer = FakeNormalizer(
+        HashSet(
+            sha1=(
+                "0123456789abcdef0123456789abcdef"
+                "01234567"
+            ),
+        )
+    )
+
+    resolver = FakeResolver(
+        physical=authoritative_release(),
+        normalized=normalized,
+    )
+
+    result = identify_file(
+        path,
+        detector=FakeDetector("nes"),
+        resolver=resolver,
+        normalizer=normalizer,
+        force_normalization=True,
+    )
+
+    assert normalizer.identify_calls == 1
+    assert resolver.lookup_calls == 1
+
+    assert result.normalized_content is not None
+    assert result.normalized_match is normalized
+
+    assert (
+        result.normalized_lookup.status
+        is ProviderLookupStatus.MATCHED
+    )
+
+
+def test_non_authoritative_physical_match_still_normalizes(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "weak.nes"
+    path.write_bytes(b"physical-bytes")
+
+    normalizer = FakeNormalizer(
+        HashSet(
+            sha1=(
+                "0123456789abcdef0123456789abcdef"
+                "01234567"
+            ),
+        )
+    )
+
+    resolver = FakeResolver(
+        physical=release(),
+        normalized=None,
+    )
+
+    result = identify_file(
+        path,
+        detector=FakeDetector("nes"),
+        resolver=resolver,
+        normalizer=normalizer,
+    )
+
+    assert normalizer.identify_calls == 1
+    assert resolver.lookup_calls == 1
+
+    assert (
+        result.physical_lookup.status
+        is ProviderLookupStatus.MATCHED
+    )
+    assert (
+        result.normalized_lookup.status
+        is ProviderLookupStatus.NO_MATCH
+    )
+
+
+def test_provider_unavailable_skips_normalization_by_default(
+    tmp_path: Path,
+) -> None:
+    class UnavailableResolver(FakeResolver):
+        def identify(self, identity):
+            self.identify_calls += 1
+
+            raise ResolverUnavailableError(
+                "provider offline"
+            )
+
+    path = tmp_path / "offline.nes"
+    path.write_bytes(b"physical-bytes")
+
+    normalizer = FakeNormalizer(
+        HashSet(
+            sha1=(
+                "0123456789abcdef0123456789abcdef"
+                "01234567"
+            ),
+        )
+    )
+
+    resolver = UnavailableResolver(
+        physical=None,
+        normalized=release(),
+    )
+
+    result = identify_file(
+        path,
+        detector=FakeDetector("nes"),
+        resolver=resolver,
+        normalizer=normalizer,
+    )
+
+    assert result.provider_unavailable
+
+    assert normalizer.identify_calls == 0
+    assert resolver.lookup_calls == 0
+    assert result.normalized_content is None
+
+    assert (
+        result.normalized_lookup.status
+        is ProviderLookupStatus.NOT_ATTEMPTED
+    )
+
+
+def test_force_normalization_after_physical_provider_unavailable(
+    tmp_path: Path,
+) -> None:
+    class PhysicalUnavailableResolver(FakeResolver):
+        def identify(self, identity):
+            self.identify_calls += 1
+
+            raise ResolverUnavailableError(
+                "physical provider offline"
+            )
+
+    path = tmp_path / "offline-forced.nes"
+    path.write_bytes(b"physical-bytes")
+
+    normalized = release()
+
+    normalizer = FakeNormalizer(
+        HashSet(
+            sha1=(
+                "0123456789abcdef0123456789abcdef"
+                "01234567"
+            ),
+        )
+    )
+
+    resolver = PhysicalUnavailableResolver(
+        physical=None,
+        normalized=normalized,
+    )
+
+    result = identify_file(
+        path,
+        detector=FakeDetector("nes"),
+        resolver=resolver,
+        normalizer=normalizer,
+        force_normalization=True,
+    )
+
+    assert normalizer.identify_calls == 1
+    assert resolver.lookup_calls == 1
+
+    assert (
+        result.physical_lookup.status
+        is ProviderLookupStatus.UNAVAILABLE
+    )
+    assert (
+        result.normalized_lookup.status
+        is ProviderLookupStatus.MATCHED
+    )
+
+    assert result.normalized_match is normalized
+
+
+def test_authoritative_platform_conflict_still_normalizes(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "platform-conflict.bin"
+    path.write_bytes(b"physical-bytes")
+
+    normalizer = FakeNormalizer(
+        HashSet(
+            sha1=(
+                "0123456789abcdef0123456789abcdef"
+                "01234567"
+            ),
+        )
+    )
+
+    resolver = FakeResolver(
+        physical=authoritative_release(
+            platform="nes",
+        ),
+        normalized=None,
+    )
+
+    result = identify_file(
+        path,
+        detector=FakeDetector("snes"),
+        resolver=resolver,
+        normalizer=normalizer,
+    )
+
+    assert normalizer.identify_calls == 1
+    assert resolver.lookup_calls == 1
+
+    assert result.platform_reconciliation is not None
+    assert result.has_platform_conflict
 
 
 def test_provider_only_platform_from_normalized_match(

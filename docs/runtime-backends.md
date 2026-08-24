@@ -124,22 +124,50 @@ An empty JSON object is treated as an ordinary unsupported source. Invalid JSON,
 an incomplete non-empty header, a timeout, or another backend failure is
 reported as a backend failure instead of being treated as a format mismatch.
 
-### Normalization
+### Structural inspection
 
-For a supported GameCube or Wii source, Dolphin reconstructs a canonical
-plain-disc ISO in a temporary workspace:
+For supported GameCube and Wii sources, the structural inspector reuses
+the Dolphin header command:
 
 ```text
-dolphin-tool convert \
-  -u <temporary-user-directory> \
-  -i <source> \
-  -o <temporary-canonical-iso> \
-  -f iso
+dolphin-tool header -i <source> -j
 ```
 
-The framework computes CRC32, MD5, SHA1, and SHA256 from the reconstructed ISO.
-These normalized hashes describe canonical disc content rather than the
-physical source container.
+This extracts local structural evidence without reconstructing or hashing
+the disc. The resulting evidence may include:
+
+- GameCube/Wii platform
+- Nintendo game ID
+- disc revision
+- region and country when present
+- internal title when present
+- Wii title ID when present
+
+Container properties returned by Dolphin, such as compression method,
+block size, and compression level, remain representation metadata and are
+kept separate from represented-disc content identity.
+
+### Represented-disc hashing
+
+When normalized disc-content evidence is needed, the adapter asks Dolphin
+to hash the represented GameCube/Wii disc directly:
+
+```text
+dolphin-tool verify -i <source> -a crc32
+dolphin-tool verify -i <source> -a md5
+dolphin-tool verify -i <source> -a sha1
+```
+
+These digests describe the logical disc image represented by the source
+container. For compressed formats such as RVZ, WIA, and GCZ, they therefore
+differ from hashes of the physical container bytes.
+
+The direct CRC32, MD5, and SHA1 values are equivalent to hashing the plain ISO
+representation of the same disc, but the framework does not need to materialize
+that ISO during normal identification.
+
+Dolphin's verify interface does not expose SHA256, so represented-disc SHA256
+is absent from the normal direct-hash path.
 
 The adapter may also request a RetroAchievements-compatible hash through:
 
@@ -150,30 +178,17 @@ dolphin-tool verify -i <source> -a rchash
 A legacy empty or zero `rchash` response is treated as unavailable specialized
 identity rather than as a normalization failure.
 
-Dolphin header information supplies local structural evidence such as:
+### Adaptive normalization
 
-- GameCube/Wii platform
-- Nintendo game ID
-- disc revision
-- region and country when present
-- internal title when present
-- Wii title ID when present
+Structural inspection is independent from represented-disc hashing.
 
-Container properties returned by Dolphin, such as compression method, block
-size, and compression level, remain representation metadata and are kept
-separate from canonical content identity.
+If an authoritative physical-file catalogue match already identifies the
+release and agrees with local platform evidence, normal identification can
+skip the more expensive represented-disc hash pass. A weak or missing physical
+match, conflicting platform evidence, or an explicit forced-normalization
+request may still cause represented-disc hashes to be computed.
 
-### Temporary storage
-
-Canonical ISO reconstruction occurs inside an automatically removed temporary
-directory.
-
-Callers may optionally provide an existing directory under which the temporary
-workspace will be created. The configured directory must already exist.
-
-Because the temporary canonical ISO can be comparable in size to the represented
-disc, deployments should ensure the selected temporary filesystem has adequate
-free space.
+Normal Dolphin identification no longer reconstructs a temporary ISO.
 
 ## xdvdfs backend
 

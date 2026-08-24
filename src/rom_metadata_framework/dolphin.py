@@ -4,7 +4,6 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from tempfile import TemporaryDirectory
 from types import MappingProxyType
 
 from .backends import (
@@ -20,8 +19,8 @@ from .capability import (
     capability_from_backend_status,
 )
 from .content import NormalizedContentIdentity
-from .hashing import hash_file
 from .identity import HashSet
+from .inspection import StructuralInspectionResult
 from .local_metadata import (
     LocalContentMetadata,
     LocalIdentifier,
@@ -441,44 +440,28 @@ class DolphinAdapter:
         )
 
     def _normalized_hashes(self, path: Path) -> HashSet:
-        """Hash Dolphin's reconstructed canonical plain-disc bytes."""
+        """Hash the represented plain-disc bytes through Dolphin.
 
-        if (
-            self.temporary_directory is not None
-            and not self.temporary_directory.is_dir()
-        ):
-            raise FileNotFoundError(self.temporary_directory)
+        dolphin-tool verify computes digests over the logical GameCube/Wii
+        disc image rather than over compressed RVZ/WIA/GCZ container bytes.
+        This therefore produces the same CRC32/MD5/SHA1 identity as a
+        reconstructed ISO without materializing that ISO.
+        """
 
-        with TemporaryDirectory(
-            prefix="rom-metadata-framework-dolphin-",
-            dir=self.temporary_directory,
-        ) as directory:
-            workdir = Path(directory)
-            output = workdir / "canonical.iso"
-            user_directory = workdir / "dolphin-user"
-            user_directory.mkdir()
-
-            run_backend(
-                self.backend,
-                (
-                    "convert",
-                    "-u",
-                    str(user_directory),
-                    "-i",
-                    str(path),
-                    "-o",
-                    str(output),
-                    "-f",
-                    "iso",
-                ),
-            )
-
-            if not output.is_file():
-                raise DolphinResponseError(
-                    "dolphin-tool conversion did not produce a canonical ISO"
-                )
-
-            return hash_file(output)
+        return HashSet(
+            crc32=self._hash(
+                path,
+                "crc32",
+            ),
+            md5=self._hash(
+                path,
+                "md5",
+            ),
+            sha1=self._hash(
+                path,
+                "sha1",
+            ),
+        )
 
     def _header(self, path: Path) -> dict[str, object]:
         result = run_backend(
@@ -605,6 +588,104 @@ class DolphinAdapter:
             )
 
         return value
+
+
+
+class DolphinStructuralInspector:
+    """Extract GameCube/Wii local metadata without disc normalization."""
+
+    name = "dolphin"
+
+    def __init__(
+        self,
+        *,
+        executable: str = DOLPHIN_EXECUTABLE,
+    ) -> None:
+        self.adapter = DolphinAdapter(
+            executable=executable,
+        )
+
+    def inspect(
+        self,
+        path: Path,
+    ) -> StructuralInspectionResult | None:
+        """Return bounded structural evidence from Dolphin's disc header."""
+
+        path = Path(path)
+
+        if not path.is_file():
+            return None
+
+        try:
+            header = self.adapter._header(path)
+
+            if not header:
+                return None
+
+            platform = self.adapter._platform_from_header(
+                header
+            )
+            game_id = self.adapter._required_string(
+                header,
+                "game_id",
+            )
+            revision = self.adapter._required_revision(
+                header
+            )
+            region = self.adapter._optional_string(
+                header,
+                "region",
+            )
+            country = self.adapter._optional_string(
+                header,
+                "country",
+            )
+            internal_name = self.adapter._optional_string(
+                header,
+                "internal_name",
+            )
+        except (
+            BackendError,
+            DolphinResponseError,
+        ):
+            return None
+
+        raw_title_id = header.get("title_id")
+        title_id = (
+            str(raw_title_id)
+            if raw_title_id is not None
+            else None
+        )
+
+        metadata = {
+            key: str(header[key])
+            for key in (
+                "block_size",
+                "compression_method",
+                "compression_level",
+            )
+            if header.get(key) is not None
+        }
+
+        return StructuralInspectionResult(
+            physical_representation=RepresentationIdentity(
+                kind="disc-image",
+                format=(
+                    path.suffix.lower().lstrip(".")
+                    or "unknown"
+                ),
+                metadata=metadata,
+            ),
+            local_metadata=self.adapter._local_metadata(
+                platform=platform,
+                game_id=game_id,
+                revision=revision,
+                region=region,
+                country=country,
+                internal_name=internal_name,
+                title_id=title_id,
+            ),
+        )
 
 
 class DolphinPlatformDetector:
