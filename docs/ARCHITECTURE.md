@@ -97,6 +97,28 @@ Provider/platform coverage and backend mapping policy are documented in
 Provider platform evidence is reconciled with local detector evidence later in
 the identification pipeline.
 
+### Directed platform and identity routing
+
+Application composition may carry an `IdentificationSelection` that directs
+detector, structural-inspector, and normalizer routing.
+
+An unrestricted platform selection is a preference rather than a claim of
+truth. Supporting components for the preferred platform are tried first, and
+ordinary discovery may continue if they reject the source.
+
+A requested native identity additionally carries a platform-native identifier.
+Where the platform has a defined primary identifier namespace, local structural
+metadata can assess that request as matched, mismatched, or unresolved.
+
+A restricted selection is deliberately different. Before expensive generic
+hashing or provider lookup, `identify_file()` performs bounded local platform
+detection and, for restricted native identities, bounded structural inspection.
+A mismatch or unresolved identity stops the workflow instead of invoking
+unrelated platform work.
+
+This routing state is operational evidence and control. It does not create
+canonical release identity and does not change provider precedence.
+
 ## Physical representation
 
 `RepresentationIdentity` describes how content is physically represented by the
@@ -301,12 +323,24 @@ special-media qualifier is currently promoted into the naming projection, so
 those components are normally absent today.
 
 `plan_identification_rename()` applies the same verification and conflict
-requirements as the legacy `plan_rename()` path. Both methods are non-mutating
+requirements as the legacy `plan_rename()` path. Planning APIs are non-mutating
 and return a `RenamePlan`.
 
-The default operation is `copy`.
+The default planning operation is `copy`.
 
-Replacing the original file is an explicit opt-in operation.
+The CLI may explicitly construct a `rename` operation after identification and
+verification. That executable operation does not weaken the naming policy:
+`safe_to_apply` must still be true and unresolved conflicts must remain absent.
+
+CLI rename is constrained to the source directory, rejects symbolic-link or
+non-regular-file sources, and never overwrites an occupied destination. The
+guarded implementation creates a same-directory hard link with no-replace
+semantics and then removes the original name. Failure to create a hard link is
+reported rather than falling back to an overwrite-capable operation.
+
+Interactive confirmation is a user-interface gate only. `--yes` can bypass the
+prompt but cannot override identity mismatch, verification, path, or collision
+policy.
 
 A canonical name is considered safe only when identification verification
 supports it and unresolved conflicts are absent.

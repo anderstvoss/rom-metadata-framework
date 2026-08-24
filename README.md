@@ -65,13 +65,15 @@ Installation provides:
 rom-metadata
 ~~~
 
-The initial command set is:
+The command set is:
 
 ~~~text
 rom-metadata platforms
 rom-metadata capabilities
 rom-metadata inspect PATH
 rom-metadata identify PATH
+rom-metadata plan-rename PATH
+rom-metadata rename PATH
 rom-metadata verify PATH
 ~~~
 
@@ -99,6 +101,20 @@ rom-metadata identify game.iso --json
 # Full diagnostic identification evidence.
 rom-metadata identify game.iso --json --complete
 
+# Preview a verified canonical filename without changing the file.
+rom-metadata plan-rename game.iso
+
+# Rename to a verified canonical filename after interactive confirmation.
+rom-metadata rename game.iso
+
+# Skip only the confirmation prompt; safety and collision checks remain active.
+rom-metadata rename game.iso --yes
+
+# Prefer or restrict platform/native-identity handling.
+rom-metadata identify game.iso --platform wii
+rom-metadata identify game.iso --identity wii:ABCD01
+rom-metadata identify game.iso --identity wii:ABCD01 --restrict
+
 # Identification plus catalogue-backed verification policy.
 rom-metadata verify game.iso
 ~~~
@@ -111,8 +127,18 @@ position, and physical source format when available. Strong local structural
 identification can remain useful when the catalogue provider has no match or is
 temporarily unavailable.
 
-`identify` and `verify` may perform network requests through Playmatch and may
-invoke optional normalization backends. `inspect` remains bounded and local.
+`identify`, `plan-rename`, `rename`, and `verify` may perform network requests
+through Playmatch and may invoke optional normalization backends. `inspect`
+remains bounded and local.
+
+Path-oriented commands support directed platform/identity selection.
+`--platform` and `--identity PLATFORM:ID` are soft preferences by default:
+the requested handling is tried first, but ordinary discovery may still fall
+back when it does not match. Adding `--restrict` makes the selection a hard,
+compute-saving restriction and prevents unrelated platform work.
+
+`--identity` is a hypothesis about platform-native identity, not an instruction
+to force metadata onto a mismatched file.
 
 See the full [CLI Reference](docs/cli.md) for command semantics, exit codes,
 network behavior, and the pre-1.0 JSON compatibility policy.
@@ -288,8 +314,17 @@ agreeing artifact-local evidence such as the primary platform identifier,
 country/region, and non-default revision. It does not heuristically parse
 provider release-name strings.
 
-The framework's default naming operation is non-destructive: it produces a
-copy/new-file plan rather than silently replacing the source.
+The naming APIs remain non-mutating by default and can produce a
+copy/new-file plan without changing the source.
+
+The CLI additionally provides an explicit `rename` operation. It performs the
+same identification and verification checks, proposes the structured canonical
+filename, and mutates only after confirmation (or `--yes`). `--yes` bypasses
+only the prompt: it does not bypass identity conflicts, verification policy,
+path safety, or destination-collision checks.
+
+Executable rename remains within the source directory and never overwrites an
+existing destination.
 
 ## Development
 

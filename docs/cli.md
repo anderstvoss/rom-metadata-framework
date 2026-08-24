@@ -14,12 +14,57 @@ rom-metadata capabilities
 rom-metadata inspect PATH
 rom-metadata identify PATH
 rom-metadata plan-rename PATH
+rom-metadata rename PATH
 rom-metadata verify PATH
 ~~~
 
 Every command supports `--help`.
 
 Commands that return structured data also support `--json`.
+
+## Directed platform and identity selection
+
+The path-oriented commands `inspect`, `identify`, `plan-rename`, `rename`, and
+`verify` accept:
+
+~~~text
+--platform PLATFORM
+--identity PLATFORM:ID
+--restrict
+~~~
+
+`--platform PLATFORM` is a soft platform preference by default. The standard
+runtime tries components that own that platform first. If they do not recognize
+the input, unrestricted handling may fall back to the ordinary platform
+discovery path.
+
+`--identity PLATFORM:ID` is a soft platform-native identity hypothesis. It
+implies the platform and compares the requested ID with locally extracted
+structural identity where the platform has a defined primary native identifier.
+The result can be reported as matched, mismatched, or unresolved. A soft
+mismatch does not rewrite the file's identity and does not prevent ordinary
+discovery of the actual platform.
+
+`--restrict` changes either selector into a hard compute-saving restriction:
+
+- `--platform X --restrict` invokes only platform handling owned by `X`;
+- `--identity X:Y --restrict` first establishes platform `X` and the local
+  native identifier using bounded detection/inspection before whole-file
+  hashing or provider lookup;
+- a restricted platform mismatch is unresolved;
+- a restricted native-ID mismatch is an explicit conflict;
+- a restricted identity that cannot be established locally is unresolved.
+
+`--restrict` without `--platform` or `--identity` is invalid usage.
+Supplying both selectors is valid only when they refer to the same canonical
+platform.
+
+These selectors affect runtime routing. They do not change provider precedence,
+manufacture canonical release identity, or authorize an unsafe rename.
+
+Current primary native-identifier namespaces used for requested-identity
+assessment include GameCube/Wii Game ID, PS2 product code, PS3 title ID,
+original-Xbox title ID, Xbox 360 title ID, and Nintendo Switch Application ID.
 
 ## `platforms`
 
@@ -75,6 +120,9 @@ semantics.
 
 ~~~text
 rom-metadata inspect PATH
+rom-metadata inspect PATH --platform wii
+rom-metadata inspect PATH --identity wii:ABCD01
+rom-metadata inspect PATH --identity wii:ABCD01 --restrict
 rom-metadata inspect PATH --json
 ~~~
 
@@ -100,6 +148,9 @@ rom-metadata identify PATH --json
 rom-metadata identify PATH --hashes
 rom-metadata identify PATH --json --complete
 rom-metadata identify PATH --no-normalize
+rom-metadata identify PATH --platform wii
+rom-metadata identify PATH --identity wii:ABCD01
+rom-metadata identify PATH --identity wii:ABCD01 --restrict
 ~~~
 
 Runs the standard release-identification workflow.
@@ -209,6 +260,8 @@ continues to use the unresolved exit status.
 rom-metadata plan-rename PATH
 rom-metadata plan-rename PATH --json
 rom-metadata plan-rename PATH --no-normalize
+rom-metadata plan-rename PATH --platform wii
+rom-metadata plan-rename PATH --identity wii:ABCD01 --restrict
 ~~~
 
 Runs the standard identification workflow and produces a proposed canonical
@@ -249,12 +302,64 @@ physical hashing and provider lookup.
 There are intentionally no `--copy`, `--replace`, or filesystem-mutation
 options in this command.
 
+
+## `rename`
+
+~~~text
+rom-metadata rename PATH
+rom-metadata rename PATH --yes
+rom-metadata rename PATH --identity wii:ABCD01
+rom-metadata rename PATH --identity wii:ABCD01 --restrict
+rom-metadata rename PATH --no-normalize
+~~~
+
+Runs the standard identification workflow, applies catalogue-backed
+verification and the structured naming policy, and, when the result is safe,
+renames the existing file within its current directory.
+
+Human output first reports the identification result and then shows the old and
+new filename. Without `--yes`, the command prompts:
+
+~~~text
+Rename file? [y/N]
+~~~
+
+Only an affirmative response performs the mutation. `-y` / `--yes` bypasses
+that confirmation prompt only. It does **not** bypass:
+
+- requested-identity mismatches;
+- unresolved or conflicting release evidence;
+- canonical naming verification requirements;
+- source-path validation;
+- destination collisions;
+- same-directory restrictions.
+
+A mismatched explicit `--identity` is never treated as a request to force the
+file into that identity. The current Playmatch API cannot resolve a
+platform-native identifier directly into trustworthy replacement release
+metadata, so the command refuses such a mismatch even with `--yes`.
+
+If the proposed destination is the same path, the command reports that the file
+is already canonical and performs no mutation.
+
+The implementation rejects symbolic-link sources, requires a regular file,
+treats an existing path or dangling symlink at the destination as occupied, and
+never overwrites the destination. The guarded file operation creates the
+destination with a same-directory hard link before removing the original name.
+Filesystems that cannot support that operation fail rather than falling back to
+an overwrite-capable rename primitive.
+
+A successful rename returns exit code `0`. Unresolved/unsafe results return
+`3`, explicit conflicts return `4`, and operational failures return `5`.
+
 ## `verify`
 
 ~~~text
 rom-metadata verify PATH
 rom-metadata verify PATH --json
 rom-metadata verify PATH --no-normalize
+rom-metadata verify PATH --platform wii
+rom-metadata verify PATH --identity wii:ABCD01 --restrict
 ~~~
 
 Runs the same standard identification workflow and then applies the framework's
@@ -315,11 +420,12 @@ context such as the source path, provider, or error message.
 `platforms`, `capabilities`, and `inspect` do not perform Playmatch release
 lookup.
 
-`identify` and `verify` use the standard Playmatch resolver and therefore may
-perform network requests.
+`identify`, `plan-rename`, `rename`, and `verify` use the standard Playmatch
+resolver and therefore may perform network requests.
 
-Optional external normalization backends may also be invoked by `identify` and
-`verify` when the detected source is handled by one of those backends.
+Optional external normalization backends may also be invoked by those
+identification-based commands when the detected source is handled by one of
+those backends.
 
 Use:
 
