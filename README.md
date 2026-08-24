@@ -297,6 +297,7 @@ identifiers, credentials, or machine-specific private paths.
 - [Architecture](docs/ARCHITECTURE.md)
 - [Adding a Platform](docs/adding-a-platform.md)
 - [Runtime Backends](docs/runtime-backends.md)
+- [Provider and Platform Coverage](docs/provider-platform-coverage.md)
 - [Metadata Selection Policy](docs/metadata-selection-policy.md)
 - [Licensing Policy](docs/LICENSING.md)
 - [Third-Party Provenance Policy](docs/THIRD_PARTY_PROVENANCE.md)

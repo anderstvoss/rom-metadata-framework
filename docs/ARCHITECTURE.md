@@ -91,6 +91,9 @@ When several detectors identify the same canonical platform, their evidence is
 combined and the highest confidence is retained. Distinct equally ranked
 platform candidates remain ambiguous.
 
+Provider/platform coverage and backend mapping policy are documented in
+[Provider and Platform Coverage](provider-platform-coverage.md).
+
 Provider platform evidence is reconciled with local detector evidence later in
 the identification pipeline.
 

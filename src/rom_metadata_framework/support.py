@@ -144,44 +144,63 @@ _IMPLEMENTED_SUPPORT: dict[str, _RuntimePlatformSupport] = {
 }
 
 
+class _DefaultComponentKind(StrEnum):
+    """Private standard-runtime component categories."""
+
+    DETECTOR = "detector"
+    INSPECTOR = "inspector"
+    NORMALIZER = "normalizer"
+    INTEGRITY_VERIFIER = "integrity-verifier"
+
+
 # One default component may implement more than one canonical platform.
 #
-# These maps intentionally describe routing ownership rather than public
-# support quality. Public support semantics remain in _IMPLEMENTED_SUPPORT.
-_DEFAULT_DETECTOR_PLATFORMS: dict[str, tuple[str, ...]] = {
-    "nes": ("nes",),
-    "ps2": ("ps2",),
-    "ps3": ("ps3",),
-    "dolphin": (
-        "gc",
-        "wii",
-    ),
-    "xbox360": ("xbox360",),
-    "switch": ("switch",),
-    "xbox": ("xbox",),
+# This table intentionally describes routing ownership rather than public
+# support quality. Runtime construction remains explicit in defaults.py,
+# while public support semantics remain in _IMPLEMENTED_SUPPORT.
+#
+# Keeping ownership in one table means a new component has one declarative
+# registration point regardless of which capability category it implements.
+_DEFAULT_COMPONENT_PLATFORMS: dict[
+    _DefaultComponentKind,
+    dict[str, tuple[str, ...]],
+] = {
+    _DefaultComponentKind.DETECTOR: {
+        "nes": ("nes",),
+        "ps2": ("ps2",),
+        "ps3": ("ps3",),
+        "dolphin": (
+            "gc",
+            "wii",
+        ),
+        "xbox360": ("xbox360",),
+        "switch": ("switch",),
+        "xbox": ("xbox",),
+    },
+    _DefaultComponentKind.INSPECTOR: {
+        "ps2": ("ps2",),
+        "ps3": ("ps3",),
+        "xbox360": ("xbox360",),
+        "switch": ("switch",),
+    },
+    _DefaultComponentKind.NORMALIZER: {
+        "nes": ("nes",),
+        "dolphin": (
+            "gc",
+            "wii",
+        ),
+        "xbox": ("xbox",),
+    },
+    _DefaultComponentKind.INTEGRITY_VERIFIER: {},
 }
 
-_DEFAULT_INSPECTOR_PLATFORMS: dict[str, tuple[str, ...]] = {
-    "ps2": ("ps2",),
-    "ps3": ("ps3",),
-    "xbox360": ("xbox360",),
-    "switch": ("switch",),
-}
 
-_DEFAULT_NORMALIZER_PLATFORMS: dict[str, tuple[str, ...]] = {
-    "nes": ("nes",),
-    "dolphin": (
-        "gc",
-        "wii",
-    ),
-    "xbox": ("xbox",),
-}
+def _default_component_platforms(
+    kind: _DefaultComponentKind,
+) -> dict[str, tuple[str, ...]]:
+    """Return standard-runtime ownership for one component category."""
 
-
-_DEFAULT_INTEGRITY_VERIFIER_PLATFORMS: dict[
-    str,
-    tuple[str, ...],
-] = {}
+    return _DEFAULT_COMPONENT_PLATFORMS[kind]
 
 
 def _rcheevos_platforms() -> frozenset[str]:
@@ -295,17 +314,30 @@ def default_support_drift() -> tuple[str, ...]:
         for verifier in build_default_integrity_verifier().verifiers
     )
 
+    detector_ownership = _default_component_platforms(
+        _DefaultComponentKind.DETECTOR
+    )
+    inspector_ownership = _default_component_platforms(
+        _DefaultComponentKind.INSPECTOR
+    )
+    normalizer_ownership = _default_component_platforms(
+        _DefaultComponentKind.NORMALIZER
+    )
+    integrity_ownership = _default_component_platforms(
+        _DefaultComponentKind.INTEGRITY_VERIFIER
+    )
+
     expected_detectors = tuple(
-        _DEFAULT_DETECTOR_PLATFORMS
+        detector_ownership
     )
     expected_inspectors = tuple(
-        _DEFAULT_INSPECTOR_PLATFORMS
+        inspector_ownership
     )
     expected_normalizers = tuple(
-        _DEFAULT_NORMALIZER_PLATFORMS
+        normalizer_ownership
     )
     expected_integrity_verifiers = tuple(
-        _DEFAULT_INTEGRITY_VERIFIER_PLATFORMS
+        integrity_ownership
     )
 
     if detectors != expected_detectors:
@@ -333,16 +365,16 @@ def default_support_drift() -> tuple[str, ...]:
         )
 
     detection_platforms = _flatten_component_platforms(
-        _DEFAULT_DETECTOR_PLATFORMS
+        detector_ownership
     )
     inspection_platforms = _flatten_component_platforms(
-        _DEFAULT_INSPECTOR_PLATFORMS
+        inspector_ownership
     )
     normalization_platforms = _flatten_component_platforms(
-        _DEFAULT_NORMALIZER_PLATFORMS
+        normalizer_ownership
     )
     integrity_platforms = _flatten_component_platforms(
-        _DEFAULT_INTEGRITY_VERIFIER_PLATFORMS
+        integrity_ownership
     )
 
     inventory = {
