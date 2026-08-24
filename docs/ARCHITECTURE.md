@@ -83,8 +83,9 @@ Platform detection is independent from release lookup.
 A `PlatformDetector` returns one or more `PlatformCandidate` values, each with
 confidence and provenance-bearing `PlatformEvidence`.
 
-The standard runtime combines independent NES, Dolphin, and original-Xbox
-detectors with `CompositePlatformDetector`.
+The standard runtime combines independent NES, PlayStation 2,
+PlayStation 3, Dolphin/GameCube/Wii, original-Xbox, Xbox 360, and Nintendo
+Switch detectors with `CompositePlatformDetector`.
 
 When several detectors identify the same canonical platform, their evidence is
 combined and the highest confidence is retained. Distinct equally ranked
