@@ -283,3 +283,131 @@ def test_unexpected_identification_exception_cleans_progress(
         )
 
     assert cancelled
+
+
+@pytest.mark.parametrize(
+    ("result", "expected"),
+    (
+        (
+            SimpleNamespace(
+                identification_strength="catalogue",
+                provider_unavailable=False,
+                has_release_conflict=False,
+                has_platform_conflict=False,
+            ),
+            ("✓", "Identified"),
+        ),
+        (
+            SimpleNamespace(
+                identification_strength="local_strong",
+                provider_unavailable=False,
+                has_release_conflict=False,
+                has_platform_conflict=False,
+            ),
+            ("✓", "Local identification"),
+        ),
+        (
+            SimpleNamespace(
+                identification_strength="local_strong",
+                provider_unavailable=True,
+                has_release_conflict=False,
+                has_platform_conflict=False,
+            ),
+            (
+                "!",
+                "Local identification; catalogue unavailable",
+            ),
+        ),
+        (
+            SimpleNamespace(
+                identification_strength="unresolved",
+                provider_unavailable=True,
+                has_release_conflict=False,
+                has_platform_conflict=False,
+            ),
+            ("!", "Catalogue unavailable"),
+        ),
+        (
+            SimpleNamespace(
+                identification_strength="unresolved",
+                provider_unavailable=False,
+                has_release_conflict=False,
+                has_platform_conflict=False,
+            ),
+            ("!", "Identification unresolved"),
+        ),
+    ),
+)
+def test_progress_result_terminal_states(
+    result: SimpleNamespace,
+    expected: tuple[str, str],
+) -> None:
+    assert cli._identification_progress_result(result) == expected
+
+
+def test_progress_result_accepts_enum_like_strength() -> None:
+    result = SimpleNamespace(
+        identification_strength=SimpleNamespace(
+            value="catalogue",
+        ),
+        provider_unavailable=False,
+        has_release_conflict=False,
+        has_platform_conflict=False,
+    )
+
+    assert cli._identification_progress_result(result) == (
+        "✓",
+        "Identified",
+    )
+
+
+def test_progress_result_platform_conflict_is_failure() -> None:
+    result = SimpleNamespace(
+        identification_strength="catalogue",
+        provider_unavailable=False,
+        has_release_conflict=False,
+        has_platform_conflict=True,
+    )
+
+    assert cli._identification_progress_result(result) == (
+        "✗",
+        "Identification conflict",
+    )
+
+
+def test_tty_reporter_reuses_animation_thread_for_new_stage() -> None:
+    stream = _TTYStringIO()
+    reporter = cli._ProgressReporter(
+        verbose=False,
+        stream=stream,
+        interval=0.01,
+    )
+
+    reporter.stage("Hashing physical file")
+    first_thread = reporter._thread
+
+    reporter.stage("Looking up physical file")
+    second_thread = reporter._thread
+
+    time.sleep(0.02)
+    reporter.finish("Identified")
+
+    assert first_thread is not None
+    assert second_thread is first_thread
+    assert "Looking up physical file" in stream.getvalue()
+
+
+def test_non_tty_cancel_without_animation_is_safe() -> None:
+    stream = io.StringIO()
+    reporter = cli._ProgressReporter(
+        verbose=False,
+        stream=stream,
+    )
+
+    reporter.stage("Hashing physical file")
+    reporter.cancel()
+
+    assert reporter._thread is None
+    assert stream.getvalue() == (
+        "[progress] Hashing physical file\n"
+    )
