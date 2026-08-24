@@ -21,6 +21,7 @@ from .inspection import (
     AmbiguousStructuralInspectorError,
     StructuralInspectionResult,
 )
+from .platforms import platform_display_name
 from .playmatch import (
     PlaymatchError,
     PlaymatchResolver,
@@ -942,6 +943,495 @@ def _inspect_path(
 
 
 
+_PRIMARY_IDENTIFIER_PRESENTATION = {
+    "gc": (
+        "nintendo-game-id",
+        "Game ID",
+    ),
+    "wii": (
+        "nintendo-game-id",
+        "Game ID",
+    ),
+    "ps2": (
+        "ps2-product-code",
+        "Product Code",
+    ),
+    "ps3": (
+        "ps3-title-id",
+        "Title ID",
+    ),
+    "xbox": (
+        "xbox-title-id",
+        "Title ID",
+    ),
+    "xbox360": (
+        "xbox360-title-id",
+        "Title ID",
+    ),
+    "switch": (
+        "switch-application-id",
+        "Application ID",
+    ),
+}
+
+
+def _nonempty_hashes_payload(
+    value: object | None,
+) -> dict[str, str]:
+    """Project only available standard hashes."""
+
+    if value is None:
+        return {}
+
+    payload = {}
+
+    for name in (
+        "crc32",
+        "md5",
+        "sha1",
+        "sha256",
+    ):
+        item = getattr(
+            value,
+            name,
+            None,
+        )
+
+        if item is not None:
+            payload[name] = str(item)
+
+    return payload
+
+
+def _first_local_value(
+    metadata: object | None,
+    field: str,
+) -> object | None:
+    """Return the first represented local metadata value."""
+
+    if metadata is None:
+        return None
+
+    values = getattr(
+        metadata,
+        field,
+        (),
+    )
+
+    if not values:
+        return None
+
+    return getattr(
+        values[0],
+        "value",
+        None,
+    )
+
+
+def _concise_platform(
+    result: object,
+) -> tuple[str | None, str | None]:
+    """Return canonical and human-readable platform names."""
+
+    canonical = getattr(
+        result,
+        "canonical_match",
+        None,
+    )
+    local_metadata = getattr(
+        result,
+        "local_metadata",
+        None,
+    )
+    detection = getattr(
+        result,
+        "platform_detection",
+        None,
+    )
+    best = getattr(
+        detection,
+        "best",
+        None,
+    )
+
+    platform = (
+        getattr(
+            canonical,
+            "platform",
+            None,
+        )
+        if canonical is not None
+        else None
+    )
+
+    if platform is None and local_metadata is not None:
+        platform = getattr(
+            local_metadata,
+            "platform",
+            None,
+        )
+
+    if platform is None and best is not None:
+        platform = getattr(
+            best,
+            "platform",
+            None,
+        )
+
+    if platform is None:
+        return None, None
+
+    try:
+        display = platform_display_name(
+            str(platform)
+        )
+    except ValueError:
+        display = str(platform)
+
+    return str(platform), display
+
+
+def _concise_primary_identifier(
+    result: object,
+    *,
+    platform: str | None,
+) -> dict[str, str] | None:
+    """Select the preferred platform-native identifier."""
+
+    if platform is None:
+        return None
+
+    presentation = _PRIMARY_IDENTIFIER_PRESENTATION.get(
+        platform
+    )
+
+    if presentation is None:
+        return None
+
+    namespace, label = presentation
+
+    metadata = getattr(
+        result,
+        "local_metadata",
+        None,
+    )
+
+    if metadata is None:
+        return None
+
+    for identifier in getattr(
+        metadata,
+        "identifiers",
+        (),
+    ):
+        if (
+            getattr(
+                identifier,
+                "namespace",
+                None,
+            )
+            == namespace
+        ):
+            value = getattr(
+                identifier,
+                "value",
+                None,
+            )
+
+            if value is None:
+                return None
+
+            return {
+                "type": namespace,
+                "label": label,
+                "value": str(value),
+            }
+
+    return None
+
+
+def _concise_disc(
+    metadata: object | None,
+) -> dict[str, int] | None:
+    """Return disc position only for known multi-disc releases."""
+
+    number = _first_local_value(
+        metadata,
+        "disc_numbers",
+    )
+    total = _first_local_value(
+        metadata,
+        "disc_totals",
+    )
+
+    if (
+        isinstance(number, bool)
+        or not isinstance(number, int)
+        or isinstance(total, bool)
+        or not isinstance(total, int)
+        or total <= 1
+    ):
+        return None
+
+    return {
+        "number": number,
+        "total": total,
+    }
+
+
+def _concise_identification_payload(
+    path: Path,
+    result: object,
+) -> dict[str, object]:
+    """Build the normal compact identification result."""
+
+    canonical = getattr(
+        result,
+        "canonical_match",
+        None,
+    )
+    metadata = getattr(
+        result,
+        "local_metadata",
+        None,
+    )
+
+    title = getattr(
+        result,
+        "display_title",
+        None,
+    )
+
+    if title is None and canonical is not None:
+        title = (
+            getattr(
+                canonical,
+                "title",
+                None,
+            )
+            or getattr(
+                canonical,
+                "release_name",
+                None,
+            )
+        )
+
+    if title is None:
+        title = _first_local_value(
+            metadata,
+            "titles",
+        )
+
+    platform, platform_name = _concise_platform(
+        result
+    )
+
+    strength = getattr(
+        result,
+        "identification_strength",
+        None,
+    )
+    status = _jsonable(strength)
+
+    if status is None:
+        status = (
+            "catalogue"
+            if canonical is not None
+            else "unresolved"
+        )
+
+    title_source = _jsonable(
+        getattr(
+            result,
+            "title_source",
+            None,
+        )
+    )
+
+    if title_source is None:
+        if canonical is not None:
+            title_source = "catalogue"
+        elif title is not None:
+            title_source = "embedded"
+
+    representation = getattr(
+        result,
+        "physical_representation",
+        None,
+    )
+
+    source_format = (
+        path.suffix.lower().lstrip(".")
+        or None
+    )
+
+    representation_format = getattr(
+        representation,
+        "format",
+        None,
+    )
+
+    format_name = (
+        source_format
+        or representation_format
+    )
+
+    region = _first_local_value(
+        metadata,
+        "countries",
+    )
+
+    if region is None:
+        region = _first_local_value(
+            metadata,
+            "regions",
+        )
+
+    revision = _first_local_value(
+        metadata,
+        "release_revisions",
+    )
+
+    if revision is not None:
+        revision = str(revision)
+
+        if revision.strip().lower() in {
+            "",
+            "0",
+            "rev 0",
+            "revision 0",
+        }:
+            revision = None
+
+    payload: dict[str, object] = {
+        "path": str(path),
+        "status": status,
+    }
+
+    if title is not None:
+        payload["title"] = str(title)
+
+    if title_source is not None:
+        payload["title_source"] = title_source
+
+    if platform is not None:
+        platform_payload = {
+            "id": platform,
+        }
+
+        if platform_name is not None:
+            platform_payload["name"] = platform_name
+
+        payload["platform"] = platform_payload
+
+    if region is not None:
+        payload["region"] = str(region)
+
+    identifier = _concise_primary_identifier(
+        result,
+        platform=platform,
+    )
+
+    if identifier is not None:
+        payload["identifier"] = identifier
+
+    if revision is not None:
+        payload["revision"] = revision
+
+    disc = _concise_disc(metadata)
+
+    if disc is not None:
+        payload["disc"] = disc
+
+    if format_name is not None:
+        payload["format"] = str(format_name)
+
+    physical_identity = getattr(
+        result,
+        "physical_identity",
+        None,
+    )
+    physical_hashes = _nonempty_hashes_payload(
+        getattr(
+            physical_identity,
+            "hashes",
+            None,
+        )
+    )
+
+    normalized_content = getattr(
+        result,
+        "normalized_content",
+        None,
+    )
+    normalized_hashes = _nonempty_hashes_payload(
+        getattr(
+            normalized_content,
+            "hashes",
+            None,
+        )
+    )
+
+    hashes = {}
+
+    if physical_hashes:
+        hashes["physical"] = physical_hashes
+
+    if normalized_hashes:
+        hashes["disc"] = normalized_hashes
+
+    if hashes:
+        payload["hashes"] = hashes
+
+    provider_name = getattr(
+        result,
+        "provider_name",
+        None,
+    )
+
+    physical_lookup = getattr(
+        result,
+        "physical_lookup",
+        None,
+    )
+    normalized_lookup = getattr(
+        result,
+        "normalized_lookup",
+        None,
+    )
+
+    provider = {}
+
+    if provider_name is not None:
+        provider["name"] = str(provider_name)
+
+    physical_status = _jsonable(
+        getattr(
+            physical_lookup,
+            "status",
+            None,
+        )
+    )
+    normalized_status = _jsonable(
+        getattr(
+            normalized_lookup,
+            "status",
+            None,
+        )
+    )
+
+    if physical_status is not None:
+        provider["physical"] = physical_status
+
+    if normalized_status is not None:
+        provider["normalized"] = normalized_status
+
+    if provider:
+        payload["provider"] = provider
+
+    return payload
+
+
 def _identification_payload(
     path: Path,
     result: object,
@@ -1062,66 +1552,158 @@ def _identification_payload(
 
 def _print_identification_text(
     payload: Mapping[str, object],
+    *,
+    include_hashes: bool = False,
 ) -> None:
-    print(f"path: {payload['path']}")
+    """Render concise human-readable identification output."""
 
-    detected = payload["detected_platform"]
+    rows = []
 
-    print(
-        "detected platform: "
-        + (
-            str(detected)
-            if detected is not None
-            else "unresolved"
+    title = payload.get("title")
+
+    if title is not None:
+        rows.append(
+            (
+                "Title",
+                str(title),
+            )
         )
-    )
 
-    print(
-        "canonical release: "
-        + (
-            str(
-                payload["canonical_match"].get(
-                    "release_name",
-                    "resolved",
+    platform = payload.get("platform")
+
+    if isinstance(platform, Mapping):
+        platform_name = (
+            platform.get("name")
+            or platform.get("id")
+        )
+
+        if platform_name is not None:
+            rows.append(
+                (
+                    "Platform",
+                    str(platform_name),
                 )
             )
-            if isinstance(
-                payload["canonical_match"],
-                Mapping,
+
+    region = payload.get("region")
+
+    if region is not None:
+        rows.append(
+            (
+                "Region",
+                str(region),
             )
-            else "unresolved"
         )
-    )
 
-    print(
-        "identified: "
-        + (
-            "yes"
-            if payload["identified"]
-            else "no"
+    identifier = payload.get("identifier")
+
+    if isinstance(identifier, Mapping):
+        label = identifier.get(
+            "label",
+            "Identifier",
         )
-    )
+        value = identifier.get("value")
 
-    physical_match = payload["physical_match"]
-    normalized_match = payload["normalized_match"]
+        if value is not None:
+            rows.append(
+                (
+                    str(label),
+                    str(value),
+                )
+            )
 
-    print(
-        "physical provider match: "
-        + (
-            "yes"
-            if physical_match is not None
-            else "no"
+    revision = payload.get("revision")
+
+    if revision is not None:
+        rows.append(
+            (
+                "Revision",
+                str(revision),
+            )
         )
-    )
 
-    print(
-        "normalized provider match: "
-        + (
-            "yes"
-            if normalized_match is not None
-            else "no"
+    disc = payload.get("disc")
+
+    if isinstance(disc, Mapping):
+        number = disc.get("number")
+        total = disc.get("total")
+
+        if number is not None and total is not None:
+            rows.append(
+                (
+                    "Disc",
+                    f"{number} / {total}",
+                )
+            )
+
+    format_name = payload.get("format")
+
+    if format_name is not None:
+        rows.append(
+            (
+                "Format",
+                str(format_name).upper(),
+            )
         )
-    )
+
+    if not rows:
+        print("Unresolved")
+    else:
+        width = max(
+            len(label)
+            for label, _ in rows
+        )
+
+        for label, value in rows:
+            print(
+                f"{label + ':':<{width + 2}} {value}"
+            )
+
+    if not include_hashes:
+        return
+
+    hashes = payload.get("hashes")
+
+    if not isinstance(hashes, Mapping):
+        return
+
+    physical = hashes.get("physical")
+
+    if isinstance(physical, Mapping) and physical:
+        print()
+        print("Physical file hashes:")
+
+        for name in (
+            "crc32",
+            "md5",
+            "sha1",
+            "sha256",
+        ):
+            value = physical.get(name)
+
+            if value is not None:
+                print(
+                    f"  {name.upper()}: {value}"
+                )
+
+    disc_hashes = hashes.get("disc")
+
+    if isinstance(disc_hashes, Mapping) and disc_hashes:
+        print()
+        print("Disc hashes:")
+
+        for name in (
+            "crc32",
+            "md5",
+            "sha1",
+            "sha256",
+        ):
+            value = disc_hashes.get(name)
+
+            if value is not None:
+                print(
+                    f"  {name.upper()}: {value}"
+                )
 
 
 def _run_identification_workflow(
@@ -1248,6 +1830,8 @@ def _identify_path(
     *,
     as_json: bool,
     normalize: bool,
+    complete: bool = False,
+    include_hashes: bool = False,
 ) -> int:
     """Run the complete hashing/provider identification workflow."""
 
@@ -1263,16 +1847,26 @@ def _identify_path(
 
     assert result is not None
 
-    payload = _identification_payload(
+    concise_payload = _concise_identification_payload(
         path,
         result,
     )
 
     if as_json:
+        payload = (
+            _identification_payload(
+                path,
+                result,
+            )
+            if complete
+            else concise_payload
+        )
+
         _emit_json(payload)
     else:
         _print_identification_text(
-            payload
+            concise_payload,
+            include_hashes=include_hashes,
         )
 
     if (
@@ -1293,16 +1887,30 @@ def _identify_path(
     ):
         return EXIT_CONFLICT
 
-    if not bool(
+    strength = _jsonable(
+        getattr(
+            result,
+            "identification_strength",
+            None,
+        )
+    )
+
+    if strength in {
+        "catalogue",
+        "local_strong",
+    }:
+        return EXIT_OK
+
+    if strength is None and bool(
         getattr(
             result,
             "identified",
             False,
         )
     ):
-        return EXIT_UNRESOLVED
+        return EXIT_OK
 
-    return EXIT_OK
+    return EXIT_UNRESOLVED
 
 
 
@@ -1546,6 +2154,22 @@ def build_parser() -> argparse.ArgumentParser:
             "and normalized provider lookup"
         ),
     )
+    identify.add_argument(
+        "--hashes",
+        action="store_true",
+        help=(
+            "show available physical-file and "
+            "represented-content hashes in text output"
+        ),
+    )
+    identify.add_argument(
+        "--complete",
+        action="store_true",
+        help=(
+            "emit the complete diagnostic identification "
+            "payload when used with --json"
+        ),
+    )
 
     verify = subparsers.add_parser(
         "verify",
@@ -1602,10 +2226,17 @@ def main(
         )
 
     if args.command == "identify":
+        if args.complete and not args.as_json:
+            parser.error(
+                "--complete requires --json"
+            )
+
         return _identify_path(
             args.path,
             as_json=args.as_json,
             normalize=not args.no_normalize,
+            complete=args.complete,
+            include_hashes=args.hashes,
         )
 
     if args.command == "verify":

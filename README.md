@@ -87,14 +87,29 @@ rom-metadata capabilities
 # Bounded local detection/inspection; no whole-file hashing or provider lookup.
 rom-metadata inspect game.iso
 
-# Whole-file hashing plus standard Playmatch release identification.
+# Whole-file hashing plus standard release identification.
 rom-metadata identify game.iso
+
+# Show available physical-file and represented-content hashes.
+rom-metadata identify game.iso --hashes
+
+# Concise machine-readable identification.
+rom-metadata identify game.iso --json
+
+# Full diagnostic identification evidence.
+rom-metadata identify game.iso --json --complete
 
 # Identification plus catalogue-backed verification policy.
 rom-metadata verify game.iso
 ~~~
 
 All commands support `--help`. Structured commands support `--json`.
+
+The normal `identify` output is concise and favors useful release information
+such as title, platform, region, platform-native identifier, revision, disc
+position, and physical source format when available. Strong local structural
+identification can remain useful when the catalogue provider has no match or is
+temporarily unavailable.
 
 `identify` and `verify` may perform network requests through Playmatch and may
 invoke optional normalization backends. `inspect` remains bounded and local.

@@ -96,6 +96,8 @@ release lookup.
 ~~~text
 rom-metadata identify PATH
 rom-metadata identify PATH --json
+rom-metadata identify PATH --hashes
+rom-metadata identify PATH --json --complete
 rom-metadata identify PATH --no-normalize
 ~~~
 
@@ -107,17 +109,98 @@ Unlike `inspect`, `identify`:
 2. performs physical release lookup through Playmatch;
 3. performs platform detection;
 4. performs structural inspection;
-5. performs canonical-content normalization where supported unless
+5. performs canonical-content normalization when useful and supported unless
    `--no-normalize` is supplied;
 6. performs normalized-content provider lookup when normalization produces a
    canonical content identity;
 7. reconciles physical, normalized, and platform evidence.
 
+Normalization is adaptive. An authoritative physical-file catalogue match that
+agrees with local platform evidence can skip a more expensive normalized-content
+pass. Weak or missing physical matches, conflicting platform evidence, or other
+cases requiring normalized evidence may still perform normalization.
+
 Because whole-file hashing is part of this command, runtime cost scales with
 file size.
 
+The default text output is intentionally concise. Available fields may include:
+
+~~~text
+Title:      Example Game
+Platform:   Wii
+Region:     USA
+Game ID:    ABCD01
+Revision:   2
+Disc:       1 / 2
+Format:     RVZ
+~~~
+
+Unavailable fields are omitted. Revision zero/default revision is not shown,
+and disc position is shown only when the artifact provides true multi-disc
+evidence.
+
+For user-facing `Region`, a specific country value is preferred when the
+artifact exposes one. Broader representation or video-system region values such
+as `NTSC-U` remain available in complete diagnostic metadata.
+
+When a catalogue provider does not supply a distinct canonical title, `Title`
+falls back to that provider's release name. The CLI does not heuristically strip
+region, language, revision, or other parenthetical qualifiers from provider
+release names.
+
+Platform-native identifier labels depend on the platform. Current examples
+include `Game ID`, `Product Code`, `Title ID`, and `Application ID`.
+
+`Format` describes the physical source file format where it can be determined
+from the source filename. Representation details such as ISO9660 or XGD remain
+available in the complete diagnostic JSON rather than replacing the user-facing
+physical format.
+
+`--hashes` adds available hash details to text output. Physical-file hashes and
+represented-content hashes are labeled separately. For example, compressed
+GameCube/Wii sources may expose:
+
+~~~text
+Physical file hashes:
+  SHA256: ...
+
+Disc hashes:
+  CRC32: ...
+  MD5: ...
+  SHA1: ...
+~~~
+
+The default `--json` output is a concise machine-readable identification result.
+It includes available hashes automatically, so `--hashes` has no additional
+effect when combined with `--json`. Fields that are unavailable are generally
+omitted.
+
+The concise JSON may include:
+
+- identification `status`;
+- title and `title_source`;
+- canonical platform ID and display name;
+- region;
+- one preferred platform-native identifier;
+- revision and multi-disc position when meaningful;
+- physical source format;
+- available physical and represented-content hashes;
+- provider lookup status.
+
+`--complete --json` emits the full diagnostic identification projection,
+including physical identity, platform-detection evidence, structural metadata,
+representation identity, physical and normalized provider matches, normalized
+content, and reconciliation state.
+
+`--complete` requires `--json`.
+
 `--no-normalize` disables canonical-content normalization and normalized
 provider lookup. Physical hashing and physical Playmatch lookup still occur.
+
+A catalogue match is not required for every successful identification. Strong
+local structural identification can return success even when the catalogue
+provider is unavailable or has no match. Probable or unresolved local evidence
+continues to use the unresolved exit status.
 
 ## `verify`
 
