@@ -488,10 +488,11 @@ def test_identify_success_text_without_network(
 
     output = capsys.readouterr().out
 
-    assert "detected platform: ps2" in output
-    assert "canonical release: Synthetic Release" in output
-    assert "identified: yes" in output
-    assert "physical provider match: yes" in output
+    assert "Title:     Synthetic Release" in output
+    assert "Platform:  PlayStation 2" in output
+    assert "Format:    ISO" in output
+    assert "identified:" not in output
+    assert "provider match:" not in output
 
 
 def test_identify_success_json_without_network(
@@ -526,17 +527,18 @@ def test_identify_success_json_without_network(
         capsys.readouterr().out
     )
 
-    assert payload["identified"] is True
-    assert (
-        payload["detected_platform"]
-        == "ps2"
-    )
-    assert (
-        payload["canonical_match"][
-            "release_name"
-        ]
-        == "Synthetic Release"
-    )
+    assert payload["status"] == "catalogue"
+    assert payload["title"] == "Synthetic Release"
+    assert payload["title_source"] == "catalogue"
+    assert payload["platform"] == {
+        "id": "ps2",
+        "name": "PlayStation 2",
+    }
+    assert payload["format"] == "iso"
+
+    assert "identified" not in payload
+    assert "canonical_match" not in payload
+    assert "platform_detection" not in payload
 
 
 def test_identify_unresolved_exit_without_network(
@@ -566,9 +568,13 @@ def test_identify_unresolved_exit_without_network(
         ]
     ) == 3
 
-    assert "identified: no" in (
-        capsys.readouterr().out
-    )
+    output = capsys.readouterr().out
+
+    assert "Platform:" in output
+    assert "PlayStation 2" in output
+    assert "Format:" in output
+    assert "BIN" in output
+    assert "Title:" not in output
 
 
 def test_identify_conflict_exit_without_network(
@@ -962,7 +968,7 @@ def test_identify_platform_conflict_exit_without_network(
     ) == 4
 
 
-def test_identification_text_reports_normalized_match(
+def test_identification_text_renders_concise_fields(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     from rom_metadata_framework.cli import (
@@ -971,26 +977,42 @@ def test_identification_text_reports_normalized_match(
 
     _print_identification_text(
         {
-            "path": "sample.bin",
-            "detected_platform": None,
-            "canonical_match": {
-                "release_name": "Synthetic Release",
+            "title": "Synthetic Release",
+            "platform": {
+                "id": "wii",
+                "name": "Wii",
             },
-            "identified": True,
-            "physical_match": None,
-            "normalized_match": {
-                "release_name": "Synthetic Release",
+            "region": "USA",
+            "identifier": {
+                "type": "nintendo-game-id",
+                "label": "Game ID",
+                "value": "ABCE01",
             },
+            "revision": "2",
+            "disc": {
+                "number": 1,
+                "total": 2,
+            },
+            "format": "rvz",
         }
     )
 
     output = capsys.readouterr().out
 
-    assert "detected platform: unresolved" in output
-    assert "canonical release: Synthetic Release" in output
-    assert "identified: yes" in output
-    assert "physical provider match: no" in output
-    assert "normalized provider match: yes" in output
+    assert "Title:" in output
+    assert "Synthetic Release" in output
+    assert "Platform:" in output
+    assert "Wii" in output
+    assert "Region:" in output
+    assert "USA" in output
+    assert "Game ID:" in output
+    assert "ABCE01" in output
+    assert "Revision:" in output
+    assert "2" in output
+    assert "Disc:" in output
+    assert "1 / 2" in output
+    assert "Format:" in output
+    assert "RVZ" in output
 
 
 def _verification_identity(
@@ -1733,3 +1755,802 @@ def test_inspection_payload_uses_explicit_projection(
         ]["platform"]
         == "ps2"
     )
+
+
+def test_concise_identification_payload_projects_wii_evidence() -> None:
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from rom_metadata_framework.cli import (
+        _concise_identification_payload,
+    )
+    from rom_metadata_framework.identity import HashSet
+    from rom_metadata_framework.local_metadata import (
+        LocalContentMetadata,
+        LocalIdentifier,
+        LocalMetadataProvenance,
+        LocalMetadataValue,
+    )
+    from rom_metadata_framework.representation import (
+        RepresentationIdentity,
+    )
+
+    provenance = LocalMetadataProvenance(
+        source="synthetic",
+        method="fixture",
+    )
+
+    result = SimpleNamespace(
+        canonical_match=SimpleNamespace(
+            title="Synthetic Game",
+            release_name="Synthetic Game (USA)",
+            platform="wii",
+        ),
+        display_title="Synthetic Game",
+        identification_strength="catalogue",
+        title_source="catalogue",
+        platform_detection=SimpleNamespace(
+            best=SimpleNamespace(
+                platform="wii",
+            ),
+        ),
+        local_metadata=LocalContentMetadata(
+            platform="wii",
+            identifiers=(
+                LocalIdentifier(
+                    namespace="nintendo-game-id",
+                    value="ABCE01",
+                    provenance=provenance,
+                ),
+            ),
+            release_revisions=(
+                LocalMetadataValue(
+                    value="0",
+                    provenance=provenance,
+                ),
+            ),
+            regions=(
+                LocalMetadataValue(
+                    value="USA",
+                    provenance=provenance,
+                ),
+            ),
+        ),
+        physical_representation=RepresentationIdentity(
+            kind="disc-image",
+            format="rvz",
+        ),
+        physical_identity=SimpleNamespace(
+            hashes=HashSet(
+                crc32="12345678",
+                md5="0" * 32,
+                sha1="1" * 40,
+                sha256="2" * 64,
+            ),
+        ),
+        normalized_content=None,
+        provider_name="playmatch",
+        physical_lookup=SimpleNamespace(
+            status="matched",
+        ),
+        normalized_lookup=SimpleNamespace(
+            status="not_attempted",
+        ),
+    )
+
+    payload = _concise_identification_payload(
+        Path("synthetic.rvz"),
+        result,
+    )
+
+    assert payload == {
+        "path": "synthetic.rvz",
+        "status": "catalogue",
+        "title": "Synthetic Game",
+        "title_source": "catalogue",
+        "platform": {
+            "id": "wii",
+            "name": "Wii",
+        },
+        "region": "USA",
+        "identifier": {
+            "type": "nintendo-game-id",
+            "label": "Game ID",
+            "value": "ABCE01",
+        },
+        "format": "rvz",
+        "hashes": {
+            "physical": {
+                "crc32": "12345678",
+                "md5": "0" * 32,
+                "sha1": "1" * 40,
+                "sha256": "2" * 64,
+            },
+        },
+        "provider": {
+            "name": "playmatch",
+            "physical": "matched",
+            "normalized": "not_attempted",
+        },
+    }
+
+
+def test_concise_identification_payload_adds_computed_disc_hashes() -> None:
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from rom_metadata_framework.cli import (
+        _concise_identification_payload,
+    )
+    from rom_metadata_framework.content import (
+        NormalizedContentIdentity,
+    )
+    from rom_metadata_framework.identity import HashSet
+
+    result = SimpleNamespace(
+        canonical_match=None,
+        display_title=None,
+        identification_strength="unresolved",
+        title_source="unavailable",
+        platform_detection=SimpleNamespace(
+            best=None,
+        ),
+        local_metadata=None,
+        physical_representation=None,
+        physical_identity=SimpleNamespace(
+            hashes=HashSet(
+                sha256="3" * 64,
+            ),
+        ),
+        normalized_content=NormalizedContentIdentity(
+            kind="disc",
+            hashes=HashSet(
+                crc32="87654321",
+                md5="4" * 32,
+                sha1="5" * 40,
+            ),
+        ),
+        provider_name=None,
+        physical_lookup=None,
+        normalized_lookup=None,
+    )
+
+    payload = _concise_identification_payload(
+        Path("synthetic.iso"),
+        result,
+    )
+
+    assert payload["format"] == "iso"
+    assert payload["hashes"] == {
+        "physical": {
+            "sha256": "3" * 64,
+        },
+        "disc": {
+            "crc32": "87654321",
+            "md5": "4" * 32,
+            "sha1": "5" * 40,
+        },
+    }
+
+
+def test_concise_identification_payload_uses_nondefault_revision_and_multidisc() -> None:
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from rom_metadata_framework.cli import (
+        _concise_identification_payload,
+    )
+    from rom_metadata_framework.local_metadata import (
+        LocalContentMetadata,
+        LocalMetadataProvenance,
+        LocalMetadataValue,
+    )
+
+    provenance = LocalMetadataProvenance(
+        source="synthetic",
+        method="fixture",
+    )
+
+    result = SimpleNamespace(
+        canonical_match=None,
+        display_title="Embedded Game",
+        identification_strength="local_strong",
+        title_source="embedded",
+        platform_detection=SimpleNamespace(
+            best=SimpleNamespace(
+                platform="wii",
+            ),
+        ),
+        local_metadata=LocalContentMetadata(
+            platform="wii",
+            titles=(
+                LocalMetadataValue(
+                    value="Embedded Game",
+                    provenance=provenance,
+                ),
+            ),
+            release_revisions=(
+                LocalMetadataValue(
+                    value="2",
+                    provenance=provenance,
+                ),
+            ),
+            disc_numbers=(
+                LocalMetadataValue(
+                    value=1,
+                    provenance=provenance,
+                ),
+            ),
+            disc_totals=(
+                LocalMetadataValue(
+                    value=2,
+                    provenance=provenance,
+                ),
+            ),
+        ),
+        physical_representation=None,
+        physical_identity=SimpleNamespace(
+            hashes=None,
+        ),
+        normalized_content=None,
+        provider_name=None,
+        physical_lookup=None,
+        normalized_lookup=None,
+    )
+
+    payload = _concise_identification_payload(
+        Path("synthetic.rvz"),
+        result,
+    )
+
+    assert payload["title"] == "Embedded Game"
+    assert payload["status"] == "local_strong"
+    assert payload["revision"] == "2"
+    assert payload["disc"] == {
+        "number": 1,
+        "total": 2,
+    }
+
+
+def test_concise_identification_primary_identifier_labels() -> None:
+    from types import SimpleNamespace
+
+    from rom_metadata_framework.cli import (
+        _concise_primary_identifier,
+    )
+    from rom_metadata_framework.local_metadata import (
+        LocalContentMetadata,
+        LocalIdentifier,
+        LocalMetadataProvenance,
+    )
+
+    provenance = LocalMetadataProvenance(
+        source="synthetic",
+        method="fixture",
+    )
+
+    cases = (
+        (
+            "ps2",
+            "ps2-product-code",
+            "SLUS-20013",
+            "Product Code",
+        ),
+        (
+            "ps3",
+            "ps3-title-id",
+            "BLUS31011",
+            "Title ID",
+        ),
+        (
+            "xbox",
+            "xbox-title-id",
+            "4D530004",
+            "Title ID",
+        ),
+        (
+            "xbox360",
+            "xbox360-title-id",
+            "12345678",
+            "Title ID",
+        ),
+        (
+            "switch",
+            "switch-application-id",
+            "0100123456789000",
+            "Application ID",
+        ),
+    )
+
+    for (
+        platform,
+        namespace,
+        value,
+        label,
+    ) in cases:
+        result = SimpleNamespace(
+            local_metadata=LocalContentMetadata(
+                platform=platform,
+                identifiers=(
+                    LocalIdentifier(
+                        namespace=namespace,
+                        value=value,
+                        provenance=provenance,
+                    ),
+                ),
+            ),
+        )
+
+        assert _concise_primary_identifier(
+            result,
+            platform=platform,
+        ) == {
+            "type": namespace,
+            "label": label,
+            "value": value,
+        }
+
+
+def test_identify_complete_json_preserves_diagnostic_projection(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from rom_metadata_framework import cli
+
+    path = tmp_path / "synthetic.iso"
+    path.write_bytes(b"synthetic")
+
+    result = _fake_identification_result(
+        identified=True
+    )
+
+    monkeypatch.setattr(
+        cli,
+        "identify_file",
+        lambda *args, **kwargs: result,
+    )
+
+    assert main(
+        [
+            "identify",
+            str(path),
+            "--json",
+            "--complete",
+        ]
+    ) == 0
+
+    payload = json.loads(
+        capsys.readouterr().out
+    )
+
+    assert payload["identified"] is True
+    assert payload["detected_platform"] == "ps2"
+    assert (
+        payload["canonical_match"][
+            "release_name"
+        ]
+        == "Synthetic Release"
+    )
+    assert "physical_identity" in payload
+    assert "platform_detection" in payload
+
+
+def test_identify_hashes_renders_physical_and_disc_hashes(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from rom_metadata_framework import cli
+    from rom_metadata_framework.content import (
+        NormalizedContentIdentity,
+    )
+    from rom_metadata_framework.identity import HashSet
+
+    path = tmp_path / "synthetic.iso"
+    path.write_bytes(b"synthetic")
+
+    result = _fake_identification_result(
+        identified=True
+    )
+
+    result.physical_identity.hashes = HashSet(
+        sha256="a" * 64,
+    )
+    result.normalized_content = NormalizedContentIdentity(
+        kind="disc",
+        hashes=HashSet(
+            crc32="12345678",
+            md5="b" * 32,
+            sha1="c" * 40,
+        ),
+    )
+
+    monkeypatch.setattr(
+        cli,
+        "identify_file",
+        lambda *args, **kwargs: result,
+    )
+
+    assert main(
+        [
+            "identify",
+            str(path),
+            "--hashes",
+        ]
+    ) == 0
+
+    output = capsys.readouterr().out
+
+    assert "Physical file hashes:" in output
+    assert f"SHA256: {'a' * 64}" in output
+
+    assert "Disc hashes:" in output
+    assert "CRC32: 12345678" in output
+    assert f"MD5: {'b' * 32}" in output
+    assert f"SHA1: {'c' * 40}" in output
+
+
+def test_identify_default_text_hides_hashes(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from rom_metadata_framework import cli
+    from rom_metadata_framework.identity import HashSet
+
+    path = tmp_path / "synthetic.iso"
+    path.write_bytes(b"synthetic")
+
+    result = _fake_identification_result(
+        identified=True
+    )
+
+    result.physical_identity.hashes = HashSet(
+        sha256="d" * 64,
+    )
+
+    monkeypatch.setattr(
+        cli,
+        "identify_file",
+        lambda *args, **kwargs: result,
+    )
+
+    assert main(
+        [
+            "identify",
+            str(path),
+        ]
+    ) == 0
+
+    output = capsys.readouterr().out
+
+    assert "Physical file hashes:" not in output
+    assert "SHA256:" not in output
+
+
+def test_identify_local_strong_returns_success(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from rom_metadata_framework import cli
+
+    path = tmp_path / "synthetic.iso"
+    path.write_bytes(b"synthetic")
+
+    result = _fake_identification_result(
+        identified=False
+    )
+
+    result.identification_strength = "local_strong"
+
+    monkeypatch.setattr(
+        cli,
+        "identify_file",
+        lambda *args, **kwargs: result,
+    )
+
+    assert main(
+        [
+            "identify",
+            str(path),
+        ]
+    ) == 0
+
+
+def test_identify_complete_requires_json(
+    tmp_path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    path = tmp_path / "synthetic.iso"
+    path.write_bytes(b"synthetic")
+
+    with pytest.raises(
+        SystemExit
+    ) as exc_info:
+        main(
+            [
+                "identify",
+                str(path),
+                "--complete",
+            ]
+        )
+
+    assert exc_info.value.code == 2
+
+    captured = capsys.readouterr()
+
+    assert captured.out == ""
+    assert (
+        "--complete requires --json"
+        in captured.err
+    )
+
+
+def test_concise_format_prefers_physical_source_extension() -> None:
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from rom_metadata_framework.cli import (
+        _concise_identification_payload,
+    )
+    from rom_metadata_framework.representation import (
+        RepresentationIdentity,
+    )
+
+    cases = (
+        (
+            "ps2",
+            "iso9660",
+            "game.iso",
+            "iso",
+        ),
+        (
+            "ps3",
+            "iso9660",
+            "game.iso",
+            "iso",
+        ),
+        (
+            "xbox360",
+            "xbox360-xgd",
+            "game.iso",
+            "iso",
+        ),
+        (
+            "wii",
+            "rvz",
+            "game.rvz",
+            "rvz",
+        ),
+    )
+
+    for (
+        platform,
+        representation_format,
+        filename,
+        expected,
+    ) in cases:
+        result = SimpleNamespace(
+            canonical_match=None,
+            display_title=None,
+            identification_strength="local_strong",
+            title_source="unavailable",
+            platform_detection=SimpleNamespace(
+                best=SimpleNamespace(
+                    platform=platform,
+                ),
+            ),
+            local_metadata=None,
+            physical_representation=RepresentationIdentity(
+                kind="disc-image",
+                format=representation_format,
+            ),
+            physical_identity=SimpleNamespace(
+                hashes=None,
+            ),
+            normalized_content=None,
+            provider_name=None,
+            physical_lookup=None,
+            normalized_lookup=None,
+        )
+
+        payload = _concise_identification_payload(
+            Path(filename),
+            result,
+        )
+
+        assert payload["format"] == expected
+
+
+def test_concise_format_falls_back_to_representation_without_extension() -> None:
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from rom_metadata_framework.cli import (
+        _concise_identification_payload,
+    )
+    from rom_metadata_framework.representation import (
+        RepresentationIdentity,
+    )
+
+    result = SimpleNamespace(
+        canonical_match=None,
+        display_title=None,
+        identification_strength="local_probable",
+        title_source="unavailable",
+        platform_detection=SimpleNamespace(
+            best=None,
+        ),
+        local_metadata=None,
+        physical_representation=RepresentationIdentity(
+            kind="disc-image",
+            format="xiso",
+        ),
+        physical_identity=SimpleNamespace(
+            hashes=None,
+        ),
+        normalized_content=None,
+        provider_name=None,
+        physical_lookup=None,
+        normalized_lookup=None,
+    )
+
+    payload = _concise_identification_payload(
+        Path("extensionless"),
+        result,
+    )
+
+    assert payload["format"] == "xiso"
+
+
+def test_identify_hashes_with_json_is_redundant_but_valid(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from rom_metadata_framework import cli
+    from rom_metadata_framework.identity import HashSet
+
+    path = tmp_path / "synthetic.iso"
+    path.write_bytes(b"synthetic")
+
+    result = _fake_identification_result(
+        identified=True
+    )
+
+    result.physical_identity.hashes = HashSet(
+        sha256="e" * 64,
+    )
+
+    monkeypatch.setattr(
+        cli,
+        "identify_file",
+        lambda *args, **kwargs: result,
+    )
+
+    assert main(
+        [
+            "identify",
+            str(path),
+            "--json",
+            "--hashes",
+        ]
+    ) == 0
+
+    payload = json.loads(
+        capsys.readouterr().out
+    )
+
+    assert payload["hashes"] == {
+        "physical": {
+            "sha256": "e" * 64,
+        },
+    }
+
+
+def test_concise_json_preserves_provider_unavailable_status() -> None:
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from rom_metadata_framework.cli import (
+        _concise_identification_payload,
+    )
+
+    result = SimpleNamespace(
+        canonical_match=None,
+        display_title=None,
+        identification_strength="local_strong",
+        title_source="unavailable",
+        platform_detection=SimpleNamespace(
+            best=SimpleNamespace(
+                platform="ps2",
+            ),
+        ),
+        local_metadata=None,
+        physical_representation=None,
+        physical_identity=SimpleNamespace(
+            hashes=None,
+        ),
+        normalized_content=None,
+        provider_name="playmatch",
+        physical_lookup=SimpleNamespace(
+            status="unavailable",
+        ),
+        normalized_lookup=SimpleNamespace(
+            status="not_attempted",
+        ),
+    )
+
+    payload = _concise_identification_payload(
+        Path("game.iso"),
+        result,
+    )
+
+    assert payload["status"] == "local_strong"
+    assert payload["provider"] == {
+        "name": "playmatch",
+        "physical": "unavailable",
+        "normalized": "not_attempted",
+    }
+
+
+def test_concise_region_prefers_country_over_broad_region() -> None:
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from rom_metadata_framework.cli import (
+        _concise_identification_payload,
+    )
+    from rom_metadata_framework.local_metadata import (
+        LocalContentMetadata,
+        LocalMetadataProvenance,
+        LocalMetadataValue,
+    )
+
+    provenance = LocalMetadataProvenance(
+        source="synthetic",
+        method="fixture",
+    )
+
+    result = SimpleNamespace(
+        canonical_match=None,
+        display_title=None,
+        identification_strength="local_strong",
+        title_source="unavailable",
+        platform_detection=SimpleNamespace(
+            best=SimpleNamespace(
+                platform="wii",
+            ),
+        ),
+        local_metadata=LocalContentMetadata(
+            platform="wii",
+            regions=(
+                LocalMetadataValue(
+                    value="NTSC-U",
+                    provenance=provenance,
+                ),
+            ),
+            countries=(
+                LocalMetadataValue(
+                    value="USA",
+                    provenance=provenance,
+                ),
+            ),
+        ),
+        physical_representation=None,
+        physical_identity=SimpleNamespace(
+            hashes=None,
+        ),
+        normalized_content=None,
+        provider_name=None,
+        physical_lookup=None,
+        normalized_lookup=None,
+    )
+
+    payload = _concise_identification_payload(
+        Path("game.rvz"),
+        result,
+    )
+
+    assert payload["region"] == "USA"
