@@ -139,3 +139,11 @@ def test_support_inventory_exposes_platform_presentation_metadata() -> None:
     assert support.platform == "ps3"
     assert support.display_name == "PlayStation 3"
     assert support.manufacturer == "Sony"
+
+
+def test_integrity_support_is_initially_unimplemented() -> None:
+    for item in platform_support_inventory():
+        assert (
+            item.integrity
+            is PlatformCapabilityKind.NONE
+        )

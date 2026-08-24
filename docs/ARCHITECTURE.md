@@ -480,3 +480,41 @@ does not trigger normalized provider lookup.
 There is currently no Nintendo Switch normalizer, no Nintendo Switch
 normalization runtime capability, and no RetroAchievements/rcheevos
 Nintendo Switch backend mapping.
+
+## Specialist integrity verification
+
+Catalogue-backed release verification and specialist artifact-integrity
+verification are separate trust layers.
+
+`verify_release()` evaluates release/catalogue evidence such as trusted
+No-Intro or Redump content matches. It does not inspect optical sectors,
+validate platform signatures, consume IRD records, or otherwise establish
+platform-specific media integrity.
+
+Specialist validation is represented separately by the `IntegrityVerifier`
+contract. An integrity verifier operates on the physical artifact and returns
+an `IntegrityReport` containing platform-specific evidence and one normalized
+outcome:
+
+- `verified`: the verifier positively established the integrity property it
+  evaluates;
+- `failed`: the verifier positively established that the artifact violates
+  that integrity property;
+- `inconclusive`: verification ran but could not establish either validity or
+  failure.
+
+An `inconclusive` result is not evidence that an artifact is corrupt.
+
+`CompositeIntegrityVerifier` conservatively routes an artifact to exactly one
+applicable specialist verifier. Multiple positive claims are ambiguous, while
+backend failures are surfaced when no independent verifier can positively
+handle the artifact.
+
+The default runtime currently registers no specialist integrity verifiers.
+This contract is groundwork for future implementations such as optical-disc
+sector validation, IRD-based validation, or platform cryptographic/signature
+checks.
+
+Specialist integrity results do not automatically alter canonical release
+identity, provider metadata, normalized-content identity, or catalogue-backed
+verification. Any future policy combining these trust layers must be explicit.

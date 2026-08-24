@@ -107,21 +107,21 @@ network behavior, and the pre-1.0 JSON compatibility policy.
 The table below describes the **standard runtime**, not merely registry or
 provider-mapping presence.
 
-| Platform | Detection | Structural inspection | Normalization | Current handling |
-| --- | --- | --- | --- | --- |
-| NES | Built in | — | Built in | iNES/NES content support; headerless normalization is explicit opt-in |
-| GameCube | External | — | External | Detection and canonical reconstruction through `dolphin-tool` |
-| Wii | External | — | External | Detection and canonical reconstruction through `dolphin-tool` |
-| PlayStation 2 | Built in | Built in | — | Bounded ISO9660 `SYSTEM.CNF` / `BOOT2` detection and local metadata |
-| PlayStation 3 | Built in | Built in | — | Directly readable ISO9660 disc images; encrypted/raw representations are not decoded |
-| Xbox | External | — | External | Original-Xbox XDVDFS handling through the `xdvdfs` backend |
-| Xbox 360 | Built in | Built in | — | Bounded XDVDFS/XEX2 detection and structural metadata |
-| Nintendo Switch | Built in | Built in | — | Bounded NSP/PFS0 and XCI/HFS0 structural handling; no NCA decryption |
+| Platform | Detection | Structural inspection | Normalization | Integrity | Current handling |
+| --- | --- | --- | --- | --- | --- |
+| NES | Built in | — | Built in | — | iNES/NES content support; headerless normalization is explicit opt-in |
+| GameCube | External | — | External | — | Detection and canonical reconstruction through `dolphin-tool` |
+| Wii | External | — | External | — | Detection and canonical reconstruction through `dolphin-tool` |
+| PlayStation 2 | Built in | Built in | — | — | Bounded ISO9660 `SYSTEM.CNF` / `BOOT2` detection and local metadata |
+| PlayStation 3 | Built in | Built in | — | — | Directly readable ISO9660 disc images; encrypted/raw representations are not decoded |
+| Xbox | External | — | External | — | Original-Xbox XDVDFS handling through the `xdvdfs` backend |
+| Xbox 360 | Built in | Built in | — | — | Bounded XDVDFS/XEX2 detection and structural metadata |
+| Nintendo Switch | Built in | Built in | — | — | Bounded NSP/PFS0 and XCI/HFS0 structural handling; no NCA decryption |
 
 `rom-metadata platforms` is the machine-readable/runtime-facing source for the
 current support inventory.
 
-### Detection, inspection, and normalization are different
+### Detection, inspection, normalization, and integrity are different
 
 A platform does not need every capability.
 
@@ -132,6 +132,10 @@ without creating canonical content.
 
 **Normalization** is used only where the framework has a defensible transform
 to a canonical content identity.
+
+**Integrity verification** is platform-specific validation of the physical
+artifact or media and remains distinct from catalogue-backed release
+verification.
 
 For that reason, PlayStation 2, PlayStation 3, Xbox 360, and Nintendo Switch
 currently have useful detection/inspection support without a normalizer.

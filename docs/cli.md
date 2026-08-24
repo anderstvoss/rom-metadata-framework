@@ -37,7 +37,8 @@ manufacturer separately from that machine-facing identifier.
 The output distinguishes:
 
 - `supported`: the standard runtime currently has at least one operational
-  detector, structural inspector, or normalizer for the platform;
+  detector, structural inspector, normalizer, or specialist integrity verifier
+  for the platform;
 - `registered`: the platform exists in the canonical registry but the standard
   runtime does not currently implement platform handling.
 
@@ -47,9 +48,12 @@ Capability columns distinguish:
 - `external`: implemented through an optional external backend;
 - `none`: not currently implemented in the standard runtime.
 
+`INTEGRITY` reports specialist physical-artifact/media verification support.
+It is distinct from the catalogue-backed `verify` command.
+
 `RCHEEVOS_MAP` indicates whether a RetroAchievements/rcheevos platform mapping
 is registered. It does not by itself mean the platform has standard detector,
-inspection, or normalization support.
+inspection, normalization, or integrity support.
 
 ## `capabilities`
 

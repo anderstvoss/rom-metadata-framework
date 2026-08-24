@@ -19,6 +19,7 @@ def test_platforms_text_output(
         "\tSTATUS\tDETECT"
         in output
     )
+    assert "\tINTEGRITY\tRCHEEVOS_MAP" in output
     assert "switch" in output
     assert "ps3" in output
     assert "snes" in output
@@ -69,6 +70,13 @@ def test_platforms_json_output(
             "switch"
         ]["rcheevos_mapping"]
         is False
+    )
+
+    assert (
+        by_platform[
+            "switch"
+        ]["integrity"]
+        == "none"
     )
 
 

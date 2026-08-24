@@ -14,7 +14,8 @@ A platform integration may need one or more of:
 1. a platform detector;
 2. a structural inspector;
 3. a canonical-content normalizer;
-4. a provider/platform mapping.
+4. a specialist integrity verifier;
+5. a provider/platform mapping.
 
 These are separate responsibilities.
 
@@ -92,6 +93,27 @@ without adding a normalizer.
 
 Normalized hashes belong to `NormalizedContentIdentity`. They must never replace
 the whole-file hashes in `RomIdentity`.
+
+## Specialist integrity verifier
+
+A specialist integrity verifier evaluates platform-specific properties of the
+physical artifact that are not equivalent to provider/catalogue identification.
+
+Examples may include:
+
+- optical-disc sector/layout validation;
+- IRD-based validation;
+- cryptographic signature verification;
+- platform-specific authenticated-container checks.
+
+Integrity verification must remain separate from `verify_release()`, which
+evaluates catalogue-backed release evidence.
+
+An integrity verifier must not manufacture canonical release identity or
+normalized-content hashes. Its result is an independent physical-artifact trust
+observation.
+
+The default runtime currently contains no specialist integrity verifier.
 
 ## External backends
 
@@ -190,6 +212,7 @@ Before opening a platform pull request, verify:
 - [ ] detector behavior is content/structure based;
 - [ ] large-file detection and inspection are bounded/random-access;
 - [ ] inspector and normalizer responsibilities are separated;
+- [ ] specialist integrity verification is separate from catalogue-backed release verification;
 - [ ] physical hashes remain physical-file hashes;
 - [ ] normalized hashes exist only when canonical content exists;
 - [ ] local metadata remains separate from provider metadata;
