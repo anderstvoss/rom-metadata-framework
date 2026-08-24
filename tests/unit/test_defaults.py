@@ -380,3 +380,40 @@ def test_default_inspector_rejects_invalid_config() -> None:
         match="DefaultRuntimeConfig",
     ):
         build_default_inspector(None)
+from rom_metadata_framework.defaults import (
+    build_default_detector,
+    build_default_inspector,
+)
+from rom_metadata_framework.selection import (
+    IdentificationSelection,
+)
+
+
+def test_default_runtime_receives_selection() -> None:
+    selection = IdentificationSelection(
+        platform="wii",
+        restrict=True,
+    )
+    config = DefaultRuntimeConfig()
+
+    detector = build_default_detector(
+        config,
+        selection=selection,
+    )
+    inspector = build_default_inspector(
+        config,
+        selection=selection,
+    )
+    normalizer = build_default_normalizer(
+        config,
+        selection=selection,
+    )
+
+    assert detector.preferred_platform == "wii"
+    assert detector.restrict_platform
+
+    assert inspector.preferred_platform == "wii"
+    assert inspector.restrict_platform
+
+    assert normalizer.preferred_platform == "wii"
+    assert normalizer.restrict_platform

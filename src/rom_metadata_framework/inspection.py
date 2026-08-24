@@ -8,6 +8,7 @@ from typing import Protocol, runtime_checkable
 from .contracts import InspectionContractError
 from .local_metadata import LocalContentMetadata
 from .representation import RepresentationIdentity
+from .selection import component_supports_platform
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,6 +72,9 @@ class CompositeStructuralInspector:
     def __init__(
         self,
         inspectors: Sequence[StructuralInspector],
+        *,
+        preferred_platform: str | None = None,
+        restrict_platform: bool = False,
     ) -> None:
         candidates = tuple(inspectors)
 
@@ -102,53 +106,119 @@ class CompositeStructuralInspector:
                 "structural inspector names must be unique"
             )
 
+        if restrict_platform and preferred_platform is None:
+            raise ValueError(
+                "restricted inspector requires a preferred platform"
+            )
+
         self.inspectors = candidates
+        self.preferred_platform = preferred_platform
+        self.restrict_platform = restrict_platform
 
     def inspect(
         self,
         path: Path,
+        *,
+        preferred_platform: str | None = None,
+        restrict_platform: bool = False,
     ) -> StructuralInspectionResult | None:
-        """Return the only structural result claiming this source."""
+        """Return structural evidence with optional directed routing.
+
+        A preferred platform is inspected first. A successful preferred
+        inspection short-circuits unrestricted fallback.
+
+        Restricted routing invokes only inspectors that own the requested
+        platform.
+        """
 
         path = Path(path)
-        matches: list[
-            tuple[StructuralInspector, StructuralInspectionResult]
-        ] = []
 
-        for inspector in self.inspectors:
-            result = inspector.inspect(path)
+        preferred_platform = (
+            preferred_platform
+            if preferred_platform is not None
+            else self.preferred_platform
+        )
+        restrict_platform = (
+            restrict_platform
+            or self.restrict_platform
+        )
 
-            if result is None:
-                continue
+        preferred = ()
+        remaining = self.inspectors
 
-            if not isinstance(
-                result,
-                StructuralInspectionResult,
-            ):
-                raise InspectionContractError(
-                    (
-                        "inspector inspect() must return "
-                        "StructuralInspectionResult or None"
-                    ),
-                    component=inspector.name,
-                    operation="inspect",
+        if preferred_platform is not None:
+            preferred = tuple(
+                inspector
+                for inspector in self.inspectors
+                if component_supports_platform(
+                    inspector.name,
+                    preferred_platform,
                 )
+            )
+            remaining = tuple(
+                inspector
+                for inspector in self.inspectors
+                if inspector not in preferred
+            )
 
-            matches.append(
-                (
-                    inspector,
+        def inspect_group(inspectors):
+            matches: list[
+                tuple[
+                    StructuralInspector,
+                    StructuralInspectionResult,
+                ]
+            ] = []
+
+            for inspector in inspectors:
+                result = inspector.inspect(path)
+
+                if result is None:
+                    continue
+
+                if not isinstance(
                     result,
-                )
-            )
+                    StructuralInspectionResult,
+                ):
+                    raise InspectionContractError(
+                        (
+                            "inspector inspect() must return "
+                            "StructuralInspectionResult or None"
+                        ),
+                        component=inspector.name,
+                        operation="inspect",
+                    )
 
-        if len(matches) > 1:
-            raise AmbiguousStructuralInspectorError(
-                path,
-                tuple(
-                    inspector.name
-                    for inspector, _ in matches
-                ),
-            )
+                matches.append(
+                    (
+                        inspector,
+                        result,
+                    )
+                )
+
+            if len(matches) > 1:
+                raise AmbiguousStructuralInspectorError(
+                    path,
+                    tuple(
+                        inspector.name
+                        for inspector, _ in matches
+                    ),
+                )
+
+            return matches
+
+        if preferred:
+            matches = inspect_group(preferred)
+
+            if matches:
+                return matches[0][1]
+
+            if restrict_platform:
+                return None
+
+        elif restrict_platform:
+            return None
+
+        matches = inspect_group(remaining)
 
         if not matches:
             return None

@@ -16,8 +16,16 @@ from .defaults import (
     build_default_inspector,
     build_default_normalizer,
 )
+from .file_operations import (
+    DestinationExistsError,
+    FileOperationError,
+    rename_file_no_overwrite,
+)
 from .identification import (
     IdentificationVerification,
+    RequestedIdentityMismatchError,
+    RequestedIdentityUnresolvedError,
+    RequestedPlatformUnresolvedError,
     identify_file,
     verify_identification,
 )
@@ -35,6 +43,12 @@ from .playmatch import (
     PlaymatchResolver,
 )
 from .runtime import build_default_runtime_report
+from .selection import (
+    IdentificationSelection,
+    RequestedIdentity,
+    identifiers_equal,
+    local_primary_identifier,
+)
 from .support import platform_support_inventory
 from .verification import (
     VerificationStatus,
@@ -797,16 +811,93 @@ def _print_capabilities(*, as_json: bool) -> int:
 
     return EXIT_OK
 
+def _local_requested_identity_payload(
+    *,
+    selection: IdentificationSelection | None,
+    detection: object,
+    inspection: StructuralInspectionResult | None,
+) -> dict[str, object] | None:
+    """Assess a requested identity using bounded local evidence only."""
+
+    if (
+        selection is None
+        or selection.identity is None
+    ):
+        return None
+
+    requested = selection.identity
+    best = getattr(
+        detection,
+        "best",
+        None,
+    )
+    observed_platform = (
+        getattr(
+            best,
+            "platform",
+            None,
+        )
+        if best is not None
+        else None
+    )
+
+    metadata = (
+        inspection.local_metadata
+        if inspection is not None
+        else None
+    )
+
+    observed_identifier = None
+
+    if observed_platform is not None:
+        observed_identifier = local_primary_identifier(
+            metadata,
+            platform=observed_platform,
+        )
+
+    if (
+        observed_platform is not None
+        and observed_platform != requested.platform
+    ):
+        status = "mismatch"
+    elif observed_identifier is None:
+        status = "unresolved"
+    elif identifiers_equal(
+        observed_identifier,
+        requested.identifier,
+    ):
+        status = "matched"
+    else:
+        status = "mismatch"
+
+    payload: dict[str, object] = {
+        "platform": requested.platform,
+        "identifier": requested.identifier,
+        "status": status,
+    }
+
+    if observed_platform is not None:
+        payload["observed_platform"] = observed_platform
+
+    if observed_identifier is not None:
+        payload[
+            "observed_identifier"
+        ] = observed_identifier
+
+    return payload
+
+
 
 def _inspection_payload(
     path: Path,
     *,
     detection: object,
     inspection: StructuralInspectionResult | None,
+    requested_identity: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     best = getattr(detection, "best", None)
 
-    return {
+    payload = {
         "path": str(path),
         "detected_platform": (
             getattr(best, "platform", None)
@@ -821,6 +912,13 @@ def _inspection_payload(
         ),
     }
 
+    if requested_identity is not None:
+        payload["requested_identity"] = dict(
+            requested_identity
+        )
+
+    return payload
+
 
 def _print_inspection_text(
     payload: Mapping[str, object],
@@ -833,6 +931,59 @@ def _print_inspection_text(
         print("detected platform: unresolved")
     else:
         print(f"detected platform: {detected}")
+
+    requested_identity = payload.get(
+        "requested_identity"
+    )
+
+    if isinstance(requested_identity, Mapping):
+        status = requested_identity.get("status")
+
+        if status == "matched":
+            print(
+                "identity hint: matched "
+                + str(
+                    requested_identity.get(
+                        "platform"
+                    )
+                )
+                + ":"
+                + str(
+                    requested_identity.get(
+                        "identifier"
+                    )
+                )
+            )
+        elif status == "mismatch":
+            print(
+                "WARNING: identity hint does not match "
+                "local structural evidence"
+            )
+
+            observed_platform = requested_identity.get(
+                "observed_platform"
+            )
+            observed_identifier = requested_identity.get(
+                "observed_identifier"
+            )
+
+            if observed_platform is not None:
+                observed = str(observed_platform)
+
+                if observed_identifier is not None:
+                    observed += ":" + str(
+                        observed_identifier
+                    )
+
+                print(
+                    "observed identity: "
+                    + observed
+                )
+        elif status == "unresolved":
+            print(
+                "identity hint: not established "
+                "from local evidence"
+            )
 
     inspection = payload["inspection"]
 
@@ -875,6 +1026,7 @@ def _inspect_path(
     path: Path,
     *,
     as_json: bool,
+    selection: IdentificationSelection | None = None,
 ) -> int:
     path = Path(path)
 
@@ -893,12 +1045,38 @@ def _inspect_path(
         return EXIT_ERROR
 
     config = DefaultRuntimeConfig()
-    detector = build_default_detector(config)
-    inspector = build_default_inspector(config)
+    detector = build_default_detector(
+        config,
+        selection=selection,
+    )
+    inspector = build_default_inspector(
+        config,
+        selection=selection,
+    )
 
     try:
         detection = detector.detect(path)
-        inspection = inspector.inspect(path)
+
+        requested_platform = (
+            selection.effective_platform
+            if selection is not None
+            else None
+        )
+
+        best = detection.best
+
+        if (
+            selection is not None
+            and selection.restrict
+            and (
+                best is None
+                or best.platform
+                != requested_platform
+            )
+        ):
+            inspection = None
+        else:
+            inspection = inspector.inspect(path)
     except AmbiguousStructuralInspectorError as exc:
         payload = {
             "path": str(path),
@@ -933,16 +1111,41 @@ def _inspect_path(
 
         return EXIT_ERROR
 
+    requested_identity = (
+        _local_requested_identity_payload(
+            selection=selection,
+            detection=detection,
+            inspection=inspection,
+        )
+    )
+
     payload = _inspection_payload(
         path,
         detection=detection,
         inspection=inspection,
+        requested_identity=requested_identity,
     )
 
     if as_json:
         _emit_json(payload)
     else:
         _print_inspection_text(payload)
+
+    if (
+        selection is not None
+        and selection.restrict
+        and selection.identity is not None
+        and requested_identity is not None
+    ):
+        status = requested_identity.get(
+            "status"
+        )
+
+        if status == "mismatch":
+            return EXIT_CONFLICT
+
+        if status != "matched":
+            return EXIT_UNRESOLVED
 
     if inspection is None:
         return EXIT_UNRESOLVED
@@ -1391,6 +1594,58 @@ def _concise_identification_payload(
     if hashes:
         payload["hashes"] = hashes
 
+    requested_identity = getattr(
+        result,
+        "requested_identity",
+        None,
+    )
+
+    if requested_identity is not None:
+        requested_payload = {
+            "platform": getattr(
+                requested_identity,
+                "platform",
+                None,
+            ),
+            "identifier": getattr(
+                requested_identity,
+                "requested_identifier",
+                None,
+            ),
+            "status": _jsonable(
+                getattr(
+                    requested_identity,
+                    "status",
+                    None,
+                )
+            ),
+        }
+
+        observed_platform = getattr(
+            requested_identity,
+            "observed_platform",
+            None,
+        )
+        observed_identifier = getattr(
+            requested_identity,
+            "observed_identifier",
+            None,
+        )
+
+        if observed_platform is not None:
+            requested_payload[
+                "observed_platform"
+            ] = observed_platform
+
+        if observed_identifier is not None:
+            requested_payload[
+                "observed_identifier"
+            ] = observed_identifier
+
+        payload["requested_identity"] = (
+            requested_payload
+        )
+
     provider_name = getattr(
         result,
         "provider_name",
@@ -1555,6 +1810,13 @@ def _identification_payload(
                 canonical
             )
         ),
+        "requested_identity": _jsonable(
+            getattr(
+                result,
+                "requested_identity",
+                None,
+            )
+        ),
     }
 
 
@@ -1667,6 +1929,76 @@ def _print_identification_text(
                 f"{label + ':':<{width + 2}} {value}"
             )
 
+    requested_identity = payload.get(
+        "requested_identity"
+    )
+
+    if isinstance(
+        requested_identity,
+        Mapping,
+    ):
+        requested_status = (
+            requested_identity.get("status")
+        )
+
+        if requested_status == "matched":
+            print()
+            print(
+                "Identity hint: matched "
+                + str(
+                    requested_identity.get(
+                        "platform"
+                    )
+                )
+                + ":"
+                + str(
+                    requested_identity.get(
+                        "identifier"
+                    )
+                )
+            )
+        elif requested_status == "mismatch":
+            print()
+            print(
+                "WARNING: identity hint does not match "
+                "observed local evidence"
+            )
+
+            observed_platform = (
+                requested_identity.get(
+                    "observed_platform"
+                )
+            )
+            observed_identifier = (
+                requested_identity.get(
+                    "observed_identifier"
+                )
+            )
+
+            if observed_platform is not None:
+                observed = str(
+                    observed_platform
+                )
+
+                if observed_identifier is not None:
+                    observed += (
+                        ":"
+                        + str(
+                            observed_identifier
+                        )
+                    )
+
+                print(
+                    "Observed identity: "
+                    + observed
+                )
+        elif requested_status == "unresolved":
+            print()
+            print(
+                "Identity hint: not established "
+                "from local evidence"
+            )
+
     if not include_hashes:
         return
 
@@ -1714,12 +2046,73 @@ def _print_identification_text(
                 )
 
 
+
+
+def _selection_from_values(
+    *,
+    platform: str | None,
+    identity: str | None,
+    restrict: bool,
+) -> IdentificationSelection | None:
+    """Build one validated directed-identification selection."""
+
+    requested_identity = (
+        RequestedIdentity.parse(identity)
+        if identity is not None
+        else None
+    )
+
+    if (
+        platform is None
+        and requested_identity is None
+        and not restrict
+    ):
+        return None
+
+    return IdentificationSelection(
+        platform=platform,
+        identity=requested_identity,
+        restrict=restrict,
+    )
+
+
+def _add_selection_arguments(
+    parser: argparse.ArgumentParser,
+) -> None:
+    """Add shared platform/identity routing options."""
+
+    parser.add_argument(
+        "--platform",
+        metavar="PLATFORM",
+        help=(
+            "prefer this canonical platform first; "
+            "with --restrict, test only this platform"
+        ),
+    )
+    parser.add_argument(
+        "--identity",
+        metavar="PLATFORM:ID",
+        help=(
+            "test this platform-native identity first; "
+            "implies its platform"
+        ),
+    )
+    parser.add_argument(
+        "--restrict",
+        action="store_true",
+        help=(
+            "make --platform or --identity a hard "
+            "compute-saving restriction"
+        ),
+    )
+
 def _run_identification_workflow(
     path: Path,
     *,
     as_json: bool,
     normalize: bool,
     conflict_context: str,
+    selection: IdentificationSelection | None = None,
 ) -> tuple[object | None, int | None]:
     """Run the shared full identification workflow for CLI commands."""
 
@@ -1745,20 +2138,92 @@ def _run_identification_workflow(
         result = identify_file(
             path,
             detector=build_default_detector(
-                config
+                config,
+                selection=selection,
             ),
             resolver=PlaymatchResolver(),
             inspector=build_default_inspector(
-                config
+                config,
+                selection=selection,
             ),
             normalizer=(
                 build_default_normalizer(
-                    config
+                    config,
+                    selection=selection,
                 )
                 if normalize
                 else None
             ),
+            selection=selection,
         )
+    except RequestedIdentityMismatchError as exc:
+        payload = {
+            "path": str(path),
+            "error": "requested-identity-mismatch",
+            "platform": exc.platform,
+            "requested_identifier": (
+                exc.requested_identifier
+            ),
+            "observed_identifier": (
+                exc.observed_identifier
+            ),
+        }
+
+        if as_json:
+            _emit_json(payload)
+        else:
+            print(
+                "identity conflict: "
+                f"requested {exc.platform}:"
+                f"{exc.requested_identifier}, "
+                "observed "
+                f"{exc.platform}:"
+                f"{exc.observed_identifier}",
+                file=sys.stderr,
+            )
+
+        return None, EXIT_CONFLICT
+
+    except RequestedIdentityUnresolvedError as exc:
+        payload = {
+            "path": str(path),
+            "error": "requested-identity-unresolved",
+            "platform": exc.platform,
+            "requested_identifier": (
+                exc.requested_identifier
+            ),
+        }
+
+        if as_json:
+            _emit_json(payload)
+        else:
+            print(
+                "restricted identity unresolved: "
+                f"{exc.platform}:"
+                f"{exc.requested_identifier}",
+                file=sys.stderr,
+            )
+
+        return None, EXIT_UNRESOLVED
+
+    except RequestedPlatformUnresolvedError as exc:
+        payload = {
+            "path": str(path),
+            "error": "requested-platform-unresolved",
+            "platform": exc.platform,
+        }
+
+        if as_json:
+            _emit_json(payload)
+        else:
+            print(
+                "restricted platform unresolved: "
+                f"{exc.platform}",
+                file=sys.stderr,
+            )
+
+        return None, EXIT_UNRESOLVED
+
     except AmbiguousStructuralInspectorError as exc:
         payload = {
             "path": str(path),
@@ -1840,6 +2305,7 @@ def _identify_path(
     normalize: bool,
     complete: bool = False,
     include_hashes: bool = False,
+    selection: IdentificationSelection | None = None,
 ) -> int:
     """Run the complete hashing/provider identification workflow."""
 
@@ -1848,6 +2314,7 @@ def _identify_path(
         as_json=as_json,
         normalize=normalize,
         conflict_context="identification",
+        selection=selection,
     )
 
     if error_code is not None:
@@ -2012,6 +2479,7 @@ def _verify_path(
     *,
     as_json: bool,
     normalize: bool,
+    selection: IdentificationSelection | None = None,
 ) -> int:
     """Identify and conservatively verify a release."""
 
@@ -2020,6 +2488,7 @@ def _verify_path(
         as_json=as_json,
         normalize=normalize,
         conflict_context="verification",
+        selection=selection,
     )
 
     if error_code is not None:
@@ -2188,6 +2657,7 @@ def _plan_rename_path(
     *,
     as_json: bool,
     normalize: bool,
+    selection: IdentificationSelection | None = None,
 ) -> int:
     """Identify one file and emit a non-mutating canonical rename plan."""
 
@@ -2196,6 +2666,7 @@ def _plan_rename_path(
         as_json=as_json,
         normalize=normalize,
         conflict_context="rename planning",
+        selection=selection,
     )
 
     if error_code is not None:
@@ -2256,6 +2727,189 @@ def _plan_rename_path(
 
     return EXIT_UNRESOLVED
 
+def _rename_path(
+    path: Path,
+    *,
+    normalize: bool,
+    selection: IdentificationSelection | None,
+    assume_yes: bool,
+) -> int:
+    """Identify, confirm, and rename one file conservatively."""
+
+    path = Path(path)
+
+    if path.is_symlink():
+        print(
+            "error: rename source must not be a symbolic link: "
+            f"{path}",
+            file=sys.stderr,
+        )
+        return EXIT_ERROR
+
+    result, error_code = _run_identification_workflow(
+        path,
+        as_json=False,
+        normalize=normalize,
+        conflict_context="rename",
+        selection=selection,
+    )
+
+    if error_code is not None:
+        return error_code
+
+    assert result is not None
+
+    concise_payload = _concise_identification_payload(
+        path,
+        result,
+    )
+    _print_identification_text(
+        concise_payload
+    )
+
+    requested_identity = getattr(
+        result,
+        "requested_identity",
+        None,
+    )
+
+    requested_status = _jsonable(
+        getattr(
+            requested_identity,
+            "status",
+            None,
+        )
+    )
+
+    # A mismatched explicit native identity cannot safely drive naming until
+    # that identity can be resolved independently to target catalogue
+    # metadata. Do not combine one detected release's title with another
+    # requested release's identifier.
+    if (
+        selection is not None
+        and selection.identity is not None
+        and requested_status == "mismatch"
+    ):
+        print(
+            "error: requested identity does not match "
+            "the observed file, and target catalogue metadata "
+            "cannot yet be resolved from the native identity",
+            file=sys.stderr,
+        )
+        return EXIT_CONFLICT
+
+    canonical = getattr(
+        result,
+        "canonical_match",
+        None,
+    )
+
+    if canonical is None:
+        print(
+            "error: canonical release is unresolved; "
+            "rename not performed",
+            file=sys.stderr,
+        )
+        return EXIT_UNRESOLVED
+
+    verification = verify_identification(
+        result
+    )
+
+    plan = NamingPolicy().plan_identification_rename(
+        path.name,
+        result,
+        verification=verification,
+        operation="rename",
+    )
+
+    if not plan.safe_to_apply:
+        status = _rename_plan_status(
+            result,
+            plan,
+            verification,
+        )
+
+        print(
+            "error: canonical rename is not safe to apply",
+            file=sys.stderr,
+        )
+
+        for conflict in plan.conflicts:
+            print(
+                f"conflict: {conflict}",
+                file=sys.stderr,
+            )
+
+        return (
+            EXIT_CONFLICT
+            if status == "conflict"
+            else EXIT_UNRESOLVED
+        )
+
+    destination = path.with_name(
+        plan.destination_name
+    )
+
+    print()
+    print(f"Old name: {path.name}")
+    print(f"New name: {destination.name}")
+
+    if destination == path:
+        print(
+            "Already canonical; no rename needed."
+        )
+        return EXIT_OK
+
+    if destination.exists():
+        print(
+            "error: destination already exists: "
+            f"{destination}",
+            file=sys.stderr,
+        )
+        return EXIT_CONFLICT
+
+    if not assume_yes:
+        try:
+            answer = input(
+                "Rename file? [y/N] "
+            )
+        except EOFError:
+            answer = ""
+
+        if answer.strip().casefold() not in {
+            "y",
+            "yes",
+        }:
+            print("Rename cancelled.")
+            return EXIT_OK
+
+    try:
+        rename_file_no_overwrite(
+            path,
+            destination,
+        )
+    except DestinationExistsError as exc:
+        print(
+            f"error: {exc}",
+            file=sys.stderr,
+        )
+        return EXIT_CONFLICT
+    except (FileOperationError, OSError) as exc:
+        print(
+            f"error: rename failed: {exc}",
+            file=sys.stderr,
+        )
+        return EXIT_ERROR
+
+    print(
+        "Renamed: "
+        f"{path.name} -> {destination.name}"
+    )
+
+    return EXIT_OK
+
+
 
 def build_parser() -> argparse.ArgumentParser:
     """Build the public command-line parser."""
@@ -2307,6 +2961,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="ROM, package, or disc-image path",
     )
+    _add_selection_arguments(inspect)
     inspect.add_argument(
         "--json",
         action="store_true",
@@ -2326,6 +2981,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="ROM, package, or disc-image path",
     )
+    _add_selection_arguments(identify)
     identify.add_argument(
         "--json",
         action="store_true",
@@ -2369,6 +3025,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="ROM, package, or disc-image path",
     )
+    _add_selection_arguments(plan_rename)
     plan_rename.add_argument(
         "--json",
         action="store_true",
@@ -2384,6 +3041,37 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
 
+    rename = subparsers.add_parser(
+        "rename",
+        help=(
+            "identify and interactively rename a file "
+            "to its verified canonical filename"
+        ),
+    )
+    rename.add_argument(
+        "path",
+        type=Path,
+        help="ROM, package, or disc-image path",
+    )
+    _add_selection_arguments(rename)
+    rename.add_argument(
+        "--no-normalize",
+        action="store_true",
+        help=(
+            "skip canonical-content normalization "
+            "and normalized provider lookup"
+        ),
+    )
+    rename.add_argument(
+        "-y",
+        "--yes",
+        action="store_true",
+        help=(
+            "perform an otherwise-safe rename without "
+            "the interactive confirmation prompt"
+        ),
+    )
+
     verify = subparsers.add_parser(
         "verify",
         help=(
@@ -2396,6 +3084,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="ROM, package, or disc-image path",
     )
+    _add_selection_arguments(verify)
     verify.add_argument(
         "--json",
         action="store_true",
@@ -2433,12 +3122,31 @@ def main(
         )
 
     if args.command == "inspect":
+        try:
+            selection = _selection_from_values(
+                platform=args.platform,
+                identity=args.identity,
+                restrict=args.restrict,
+            )
+        except ValueError as exc:
+            parser.error(str(exc))
+
         return _inspect_path(
             args.path,
             as_json=args.as_json,
+            selection=selection,
         )
 
     if args.command == "identify":
+        try:
+            selection = _selection_from_values(
+                platform=args.platform,
+                identity=args.identity,
+                restrict=args.restrict,
+            )
+        except ValueError as exc:
+            parser.error(str(exc))
+
         if args.complete and not args.as_json:
             parser.error(
                 "--complete requires --json"
@@ -2450,20 +3158,58 @@ def main(
             normalize=not args.no_normalize,
             complete=args.complete,
             include_hashes=args.hashes,
+            selection=selection,
         )
 
     if args.command == "plan-rename":
+        try:
+            selection = _selection_from_values(
+                platform=args.platform,
+                identity=args.identity,
+                restrict=args.restrict,
+            )
+        except ValueError as exc:
+            parser.error(str(exc))
+
         return _plan_rename_path(
             args.path,
             as_json=args.as_json,
             normalize=not args.no_normalize,
+            selection=selection,
+        )
+
+    if args.command == "rename":
+        try:
+            selection = _selection_from_values(
+                platform=args.platform,
+                identity=args.identity,
+                restrict=args.restrict,
+            )
+        except ValueError as exc:
+            parser.error(str(exc))
+
+        return _rename_path(
+            args.path,
+            normalize=not args.no_normalize,
+            selection=selection,
+            assume_yes=args.yes,
         )
 
     if args.command == "verify":
+        try:
+            selection = _selection_from_values(
+                platform=args.platform,
+                identity=args.identity,
+                restrict=args.restrict,
+            )
+        except ValueError as exc:
+            parser.error(str(exc))
+
         return _verify_path(
             args.path,
             as_json=args.as_json,
             normalize=not args.no_normalize,
+            selection=selection,
         )
 
     parser.error(
