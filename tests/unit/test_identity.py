@@ -51,7 +51,7 @@ def test_identity_normalizes_optional_strings() -> None:
         serial="  example-serial ",
     )
 
-    assert identity.platform == "gamecube"
+    assert identity.platform == "gc"
     assert identity.format == "rvz"
     assert identity.serial == "example-serial"
 
@@ -177,3 +177,38 @@ def test_generic_hasher_includes_sha256(tmp_path) -> None:
     hashes = hash_file(path)
 
     assert hashes.sha256 == hashlib.sha256(payload).hexdigest()
+
+
+def test_identity_canonicalizes_platform_aliases() -> None:
+    from rom_metadata_framework.identity import (
+        RomIdentity,
+    )
+
+    cases = {
+        "gamecube": "gc",
+        "nintendo-gamecube": "gc",
+        "playstation-2": "ps2",
+        "sony-playstation-3": "ps3",
+        "xbox-360": "xbox360",
+        "nintendo-switch": "switch",
+        "game-boy-advance": "gba",
+    }
+
+    for supplied, expected in cases.items():
+        identity = RomIdentity(
+            platform=supplied,
+        )
+
+        assert identity.platform == expected
+
+
+def test_identity_preserves_unknown_platform_value() -> None:
+    from rom_metadata_framework.identity import (
+        RomIdentity,
+    )
+
+    identity = RomIdentity(
+        platform="future-console",
+    )
+
+    assert identity.platform == "future-console"

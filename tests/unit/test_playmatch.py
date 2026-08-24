@@ -828,3 +828,106 @@ def test_playmatch_reports_timeout(
 def test_playmatch_user_agent_tracks_distribution_version() -> None:
     expected = version("rom-metadata-framework")
     assert PLAYMATCH_USER_AGENT == f"rom-metadata-framework/{expected}"
+
+
+@pytest.mark.parametrize(
+    ("provider_name", "expected"),
+    (
+        (
+            "Nintendo - NES",
+            "nes",
+        ),
+        (
+            "Nintendo - Nintendo Entertainment System",
+            "nes",
+        ),
+        (
+            "Microsoft - Xbox 360",
+            "xbox360",
+        ),
+        (
+            "Sony - PlayStation 2",
+            "ps2",
+        ),
+        (
+            "Sega - Mega Drive",
+            "genesis",
+        ),
+    ),
+)
+def test_playmatch_canonicalizes_vendor_prefixed_platform_names(
+    monkeypatch: pytest.MonkeyPatch,
+    provider_name: str,
+    expected: str,
+) -> None:
+    payload = {
+        "gameMatchType": "SHA1",
+        "game": {
+            "id": "11111111-1111-1111-1111-111111111111",
+            "name": "Synthetic Release",
+        },
+        "platform": {
+            "id": "22222222-2222-2222-2222-222222222222",
+            "name": provider_name,
+        },
+        "externalMetadata": [],
+    }
+
+    monkeypatch.setattr(
+        "rom_metadata_framework.playmatch.urlopen",
+        lambda request, timeout: FakeResponse(
+            json.dumps(payload).encode()
+        ),
+    )
+
+    result = PlaymatchResolver().identify(
+        identity()
+    )
+
+    assert result is not None
+    assert result.platform == expected
+    assert (
+        result.evidence[0].details[
+            "provider_platform"
+        ]
+        == provider_name
+    )
+
+
+def test_playmatch_preserves_unknown_provider_platform_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider_name = "Example Vendor - Future Console"
+
+    payload = {
+        "gameMatchType": "SHA1",
+        "game": {
+            "id": "11111111-1111-1111-1111-111111111111",
+            "name": "Synthetic Release",
+        },
+        "platform": {
+            "id": "22222222-2222-2222-2222-222222222222",
+            "name": provider_name,
+        },
+        "externalMetadata": [],
+    }
+
+    monkeypatch.setattr(
+        "rom_metadata_framework.playmatch.urlopen",
+        lambda request, timeout: FakeResponse(
+            json.dumps(payload).encode()
+        ),
+    )
+
+    result = PlaymatchResolver().identify(
+        identity()
+    )
+
+    assert result is not None
+    assert result.platform == provider_name
+    assert (
+        result.evidence[0].details[
+            "provider_platform"
+        ]
+        == provider_name
+    )

@@ -26,7 +26,7 @@ from .switch_container import (
     read_entry_range,
 )
 
-SWITCH_PLATFORM = "nintendo-switch"
+SWITCH_PLATFORM = "switch"
 
 MAX_CNMT_XML_SIZE = 1024 * 1024
 

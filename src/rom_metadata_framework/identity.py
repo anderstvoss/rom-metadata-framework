@@ -101,6 +101,25 @@ class RomIdentity:
             if value is not None:
                 object.__setattr__(self, name, value.strip() or None)
 
+        if self.platform is not None:
+            from .platforms import (
+                UnknownPlatformError,
+                canonical_platform_name,
+            )
+
+            try:
+                canonical_platform = canonical_platform_name(
+                    self.platform
+                )
+            except UnknownPlatformError:
+                canonical_platform = self.platform
+
+            object.__setattr__(
+                self,
+                "platform",
+                canonical_platform,
+            )
+
         if self.file_size is not None:
             if isinstance(self.file_size, bool) or not isinstance(
                 self.file_size,

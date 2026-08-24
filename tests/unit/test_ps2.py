@@ -201,7 +201,7 @@ def test_ps2_detector_returns_canonical_platform(
     detection = detector.detect(path)
 
     assert detection.best is not None
-    assert detection.best.platform == "playstation-2"
+    assert detection.best.platform == "ps2"
     assert detection.best.confidence == 100
 
     evidence = detection.best.evidence[0]
@@ -285,7 +285,7 @@ def test_product_code_can_be_absent_without_losing_ps2_detection(
     detection = Ps2PlatformDetector().detect(path)
 
     assert detection.best is not None
-    assert detection.best.platform == "playstation-2"
+    assert detection.best.platform == "ps2"
     assert "product_code" not in (
         detection.best.evidence[0].details
     )
@@ -418,7 +418,7 @@ def test_ps2_structural_inspector_returns_representation_and_metadata(
     metadata = result.local_metadata
 
     assert metadata is not None
-    assert metadata.platform == "playstation-2"
+    assert metadata.platform == "ps2"
     assert len(metadata.identifiers) == 1
     assert metadata.identifiers[0].namespace == (
         "ps2-product-code"
@@ -510,7 +510,7 @@ def test_ps2_structural_inspector_integrates_with_identify_file(
     assert result.platform_detection.best is not None
     assert (
         result.platform_detection.best.platform
-        == "playstation-2"
+        == "ps2"
     )
 
     assert result.physical_representation is not None
@@ -521,7 +521,7 @@ def test_ps2_structural_inspector_integrates_with_identify_file(
     }
 
     assert result.local_metadata is not None
-    assert result.local_metadata.platform == "playstation-2"
+    assert result.local_metadata.platform == "ps2"
     assert len(result.local_metadata.identifiers) == 1
     assert (
         result.local_metadata.identifiers[0].namespace

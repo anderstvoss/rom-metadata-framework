@@ -235,7 +235,7 @@ def test_platform_conflict_is_preserved(
 
     result = identify_file(
         path,
-        detector=FakeDetector("gamecube"),
+        detector=FakeDetector("gc"),
         resolver=resolver,
     )
 
@@ -397,12 +397,12 @@ def test_redump_normalized_content_can_be_known_good(
     normalized = verified_release(
         authority="Redump",
         status=None,
-        platform="gamecube",
+        platform="gc",
     )
 
     result = identify_file(
         path,
-        detector=FakeDetector("gamecube"),
+        detector=FakeDetector("gc"),
         resolver=FakeResolver(
             physical=None,
             normalized=normalized,
@@ -1087,7 +1087,7 @@ def test_identification_preserves_normalizer_representation(
 
     result = identify_file(
         path,
-        detector=FakeDetector("gamecube"),
+        detector=FakeDetector("gc"),
         resolver=FakeResolver(
             physical=None,
             normalized=None,
@@ -1288,7 +1288,7 @@ def test_identification_preserves_structural_inspection_without_normalization(
         format="iso9660",
     )
     metadata = LocalContentMetadata(
-        platform="playstation-2",
+        platform="ps2",
         boot={"path": r"cdrom0:\BOOT.ELF;1"},
     )
 
@@ -1308,7 +1308,7 @@ def test_identification_preserves_structural_inspection_without_normalization(
 
     result = identify_file(
         path,
-        detector=FakeDetector("playstation-2"),
+        detector=FakeDetector("ps2"),
         resolver=resolver,
         inspector=Inspector(),
     )
@@ -1356,13 +1356,13 @@ def test_identification_runs_physical_lookup_before_inspection(
 
             return StructuralInspectionResult(
                 local_metadata=LocalContentMetadata(
-                    platform="playstation-2",
+                    platform="ps2",
                 ),
             )
 
     result = identify_file(
         path,
-        detector=FakeDetector("playstation-2"),
+        detector=FakeDetector("ps2"),
         resolver=resolver,
         inspector=Inspector(),
     )
@@ -1396,7 +1396,7 @@ def test_identification_rejects_invalid_inspector_result(
     ):
         identify_file(
             path,
-            detector=FakeDetector("playstation-2"),
+            detector=FakeDetector("ps2"),
             resolver=FakeResolver(
                 physical=None,
                 normalized=None,
@@ -1463,7 +1463,7 @@ def test_identification_rejects_conflicting_structural_evidence(
     ):
         identify_file(
             path,
-            detector=FakeDetector("playstation-2"),
+            detector=FakeDetector("ps2"),
             resolver=FakeResolver(
                 physical=None,
                 normalized=None,

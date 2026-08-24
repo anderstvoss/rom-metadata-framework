@@ -29,6 +29,11 @@ rom-metadata platforms --json
 
 Shows every registered canonical platform and its current implementation state.
 
+Canonical platform identifiers intentionally follow common ROM/emulation
+filesystem slugs such as `ps3`, `gc`, `gba`, `nds`, `xbox360`, and `switch`.
+The platform inventory also exposes a human-readable display name and
+manufacturer separately from that machine-facing identifier.
+
 The output distinguishes:
 
 - `supported`: the standard runtime currently has at least one operational

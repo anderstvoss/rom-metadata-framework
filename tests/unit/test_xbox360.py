@@ -232,7 +232,7 @@ def test_detector_identifies_xbox360(
     assert detection.best is not None
     assert (
         detection.best.platform
-        == "xbox-360"
+        == "xbox360"
     )
 
     evidence = detection.best.evidence[0]
@@ -263,7 +263,7 @@ def test_inspector_preserves_local_metadata(
 
     metadata = result.local_metadata
 
-    assert metadata.platform == "xbox-360"
+    assert metadata.platform == "xbox360"
 
     identifiers = {
         item.namespace: item.value

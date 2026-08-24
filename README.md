@@ -28,6 +28,11 @@ the canonical registry or having a provider mapping does not necessarily mean
 the standard runtime currently implements detection or parsing for that
 platform.
 
+Canonical platform identifiers use concise community ROM/emulation slugs such
+as `nes`, `snes`, `gc`, `ps2`, `ps3`, `xbox360`, and `switch`. Human-readable
+platform names and manufacturers are maintained separately, while older
+long-form framework identifiers remain accepted as aliases.
+
 ## Installation
 
 The package requires Python 3.11 or newer.

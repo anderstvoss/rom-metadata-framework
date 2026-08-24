@@ -38,7 +38,7 @@ DOLPHIN_EXECUTABLE = "dolphin-tool"
 RETROACHIEVEMENTS_NAMESPACE = "retroachievements"
 
 _SUPPORTED_PLATFORMS = {
-    "gamecube",
+    "gc",
     "wii",
 }
 
@@ -562,7 +562,7 @@ class DolphinAdapter:
         if header.get("title_id") is not None:
             return "wii"
 
-        return "gamecube"
+        return "gc"
 
     @staticmethod
     def _required_string(

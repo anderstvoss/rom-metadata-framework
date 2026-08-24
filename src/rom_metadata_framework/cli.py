@@ -683,6 +683,8 @@ def _platforms_payload() -> list[dict[str, object]]:
     return [
         {
             "platform": item.platform,
+            "display_name": item.display_name,
+            "manufacturer": item.manufacturer,
             "status": item.status.value,
             "detection": item.detection.value,
             "inspection": item.inspection.value,
@@ -705,7 +707,8 @@ def _print_platforms(*, as_json: bool) -> int:
         return EXIT_OK
 
     header = (
-        "PLATFORM\tSTATUS\tDETECT\tINSPECT\tNORMALIZE"
+        "PLATFORM\tDISPLAY_NAME\tMANUFACTURER"
+        "\tSTATUS\tDETECT\tINSPECT\tNORMALIZE"
         "\tRCHEEVOS_MAP"
     )
     print(header)
@@ -715,6 +718,8 @@ def _print_platforms(*, as_json: bool) -> int:
             "\t".join(
                 (
                     str(item["platform"]),
+                    str(item["display_name"]),
+                    str(item["manufacturer"]),
                     str(item["status"]),
                     str(item["detection"]),
                     str(item["inspection"]),

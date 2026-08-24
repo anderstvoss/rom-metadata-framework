@@ -30,7 +30,7 @@ def test_platform_candidate_uses_canonical_registry() -> None:
         confidence=95,
     )
 
-    assert candidate.platform == "game-boy-advance"
+    assert candidate.platform == "gba"
 
 
 def test_detection_returns_highest_confidence_candidate() -> None:

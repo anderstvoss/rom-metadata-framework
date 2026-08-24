@@ -29,6 +29,8 @@ class PlatformSupport:
     """Public support summary for one canonical platform."""
 
     platform: str
+    display_name: str
+    manufacturer: str
     status: PlatformImplementationStatus
     detection: PlatformCapabilityKind
     inspection: PlatformCapabilityKind
@@ -38,9 +40,20 @@ class PlatformSupport:
     notes: tuple[str, ...] = ()
 
 
-_IMPLEMENTED_SUPPORT: dict[str, PlatformSupport] = {
-    "nes": PlatformSupport(
-        platform="nes",
+@dataclass(frozen=True, slots=True)
+class _RuntimePlatformSupport:
+    """Private runtime-capability declaration for one platform."""
+
+    status: PlatformImplementationStatus
+    detection: PlatformCapabilityKind
+    inspection: PlatformCapabilityKind
+    normalization: PlatformCapabilityKind
+    normalization_backend: str | None = None
+    notes: tuple[str, ...] = ()
+
+
+_IMPLEMENTED_SUPPORT: dict[str, _RuntimePlatformSupport] = {
+    "nes": _RuntimePlatformSupport(
         status=PlatformImplementationStatus.SUPPORTED,
         detection=PlatformCapabilityKind.BUILT_IN,
         inspection=PlatformCapabilityKind.NONE,
@@ -50,8 +63,7 @@ _IMPLEMENTED_SUPPORT: dict[str, PlatformSupport] = {
             "headerless normalization is explicit opt-in",
         ),
     ),
-    "gamecube": PlatformSupport(
-        platform="gamecube",
+    "gc": _RuntimePlatformSupport(
         status=PlatformImplementationStatus.SUPPORTED,
         detection=PlatformCapabilityKind.EXTERNAL,
         inspection=PlatformCapabilityKind.NONE,
@@ -61,8 +73,7 @@ _IMPLEMENTED_SUPPORT: dict[str, PlatformSupport] = {
             "detection and normalization use the Dolphin backend",
         ),
     ),
-    "wii": PlatformSupport(
-        platform="wii",
+    "wii": _RuntimePlatformSupport(
         status=PlatformImplementationStatus.SUPPORTED,
         detection=PlatformCapabilityKind.EXTERNAL,
         inspection=PlatformCapabilityKind.NONE,
@@ -72,8 +83,7 @@ _IMPLEMENTED_SUPPORT: dict[str, PlatformSupport] = {
             "detection and normalization use the Dolphin backend",
         ),
     ),
-    "playstation-2": PlatformSupport(
-        platform="playstation-2",
+    "ps2": _RuntimePlatformSupport(
         status=PlatformImplementationStatus.SUPPORTED,
         detection=PlatformCapabilityKind.BUILT_IN,
         inspection=PlatformCapabilityKind.BUILT_IN,
@@ -82,8 +92,7 @@ _IMPLEMENTED_SUPPORT: dict[str, PlatformSupport] = {
             "bounded ISO9660 SYSTEM.CNF/BOOT2 inspection",
         ),
     ),
-    "playstation-3": PlatformSupport(
-        platform="playstation-3",
+    "ps3": _RuntimePlatformSupport(
         status=PlatformImplementationStatus.SUPPORTED,
         detection=PlatformCapabilityKind.BUILT_IN,
         inspection=PlatformCapabilityKind.BUILT_IN,
@@ -93,8 +102,7 @@ _IMPLEMENTED_SUPPORT: dict[str, PlatformSupport] = {
             "encrypted/raw representations are not decoded",
         ),
     ),
-    "xbox": PlatformSupport(
-        platform="xbox",
+    "xbox": _RuntimePlatformSupport(
         status=PlatformImplementationStatus.SUPPORTED,
         detection=PlatformCapabilityKind.EXTERNAL,
         inspection=PlatformCapabilityKind.NONE,
@@ -104,8 +112,7 @@ _IMPLEMENTED_SUPPORT: dict[str, PlatformSupport] = {
             "XDVDFS support uses the external xdvdfs backend",
         ),
     ),
-    "xbox-360": PlatformSupport(
-        platform="xbox-360",
+    "xbox360": _RuntimePlatformSupport(
         status=PlatformImplementationStatus.SUPPORTED,
         detection=PlatformCapabilityKind.BUILT_IN,
         inspection=PlatformCapabilityKind.BUILT_IN,
@@ -114,8 +121,7 @@ _IMPLEMENTED_SUPPORT: dict[str, PlatformSupport] = {
             "bounded XDVDFS/XEX2 structural inspection",
         ),
     ),
-    "nintendo-switch": PlatformSupport(
-        platform="nintendo-switch",
+    "switch": _RuntimePlatformSupport(
         status=PlatformImplementationStatus.SUPPORTED,
         detection=PlatformCapabilityKind.BUILT_IN,
         inspection=PlatformCapabilityKind.BUILT_IN,
@@ -134,28 +140,28 @@ _IMPLEMENTED_SUPPORT: dict[str, PlatformSupport] = {
 # support quality. Public support semantics remain in _IMPLEMENTED_SUPPORT.
 _DEFAULT_DETECTOR_PLATFORMS: dict[str, tuple[str, ...]] = {
     "nes": ("nes",),
-    "ps2": ("playstation-2",),
-    "ps3": ("playstation-3",),
+    "ps2": ("ps2",),
+    "ps3": ("ps3",),
     "dolphin": (
-        "gamecube",
+        "gc",
         "wii",
     ),
-    "xbox360": ("xbox-360",),
-    "switch": ("nintendo-switch",),
+    "xbox360": ("xbox360",),
+    "switch": ("switch",),
     "xbox": ("xbox",),
 }
 
 _DEFAULT_INSPECTOR_PLATFORMS: dict[str, tuple[str, ...]] = {
-    "ps2": ("playstation-2",),
-    "ps3": ("playstation-3",),
-    "xbox360": ("xbox-360",),
-    "switch": ("nintendo-switch",),
+    "ps2": ("ps2",),
+    "ps3": ("ps3",),
+    "xbox360": ("xbox360",),
+    "switch": ("switch",),
 }
 
 _DEFAULT_NORMALIZER_PLATFORMS: dict[str, tuple[str, ...]] = {
     "nes": ("nes",),
     "dolphin": (
-        "gamecube",
+        "gc",
         "wii",
     ),
     "xbox": ("xbox",),
@@ -182,8 +188,7 @@ def platform_support_inventory() -> tuple[PlatformSupport, ...]:
         )
 
         if support is None:
-            support = PlatformSupport(
-                platform=definition.name,
+            support = _RuntimePlatformSupport(
                 status=(
                     PlatformImplementationStatus.REGISTERED
                 ),
@@ -194,7 +199,9 @@ def platform_support_inventory() -> tuple[PlatformSupport, ...]:
 
         result.append(
             PlatformSupport(
-                platform=support.platform,
+                platform=definition.name,
+                display_name=definition.display_name,
+                manufacturer=definition.manufacturer,
                 status=support.status,
                 detection=support.detection,
                 inspection=support.inspection,
