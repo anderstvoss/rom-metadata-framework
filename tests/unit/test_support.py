@@ -147,3 +147,59 @@ def test_integrity_support_is_initially_unimplemented() -> None:
             item.integrity
             is PlatformCapabilityKind.NONE
         )
+
+
+def test_default_component_ownership_covers_current_runtime() -> None:
+    from rom_metadata_framework.defaults import (
+        build_default_detector,
+        build_default_inspector,
+        build_default_integrity_verifier,
+        build_default_normalizer,
+    )
+    from rom_metadata_framework.support import (
+        _default_component_platforms,
+        _DefaultComponentKind,
+    )
+
+    actual = {
+        _DefaultComponentKind.DETECTOR: tuple(
+            component.name
+            for component in build_default_detector().detectors
+        ),
+        _DefaultComponentKind.INSPECTOR: tuple(
+            component.name
+            for component in build_default_inspector().inspectors
+        ),
+        _DefaultComponentKind.NORMALIZER: tuple(
+            component.name
+            for component in build_default_normalizer().normalizers
+        ),
+        _DefaultComponentKind.INTEGRITY_VERIFIER: tuple(
+            component.name
+            for component in (
+                build_default_integrity_verifier().verifiers
+            )
+        ),
+    }
+
+    for kind, names in actual.items():
+        assert names == tuple(
+            _default_component_platforms(kind)
+        )
+
+
+def test_default_component_ownership_references_registered_platforms() -> None:
+    from rom_metadata_framework.support import (
+        _DEFAULT_COMPONENT_PLATFORMS,
+    )
+
+    registered = {
+        platform.name
+        for platform in PLATFORMS
+    }
+
+    for ownership in _DEFAULT_COMPONENT_PLATFORMS.values():
+        for platforms in ownership.values():
+            assert platforms
+            assert set(platforms) <= registered
+            assert len(platforms) == len(set(platforms))

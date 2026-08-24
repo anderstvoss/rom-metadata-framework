@@ -146,15 +146,24 @@ provider mapping.
 
 Do not infer implementation support from provider registration alone.
 
+See [Provider and Platform Coverage](provider-platform-coverage.md) for the
+current Playmatch reconciliation policy and rcheevos coverage matrix.
+
 ## Standard-runtime registration
 
 When adding a standard component:
 
-1. register the detector, inspector, or normalizer in the relevant builder in
-   `defaults.py`;
-2. update the component-to-platform ownership maps in `support.py`;
-3. add or update the corresponding `PlatformSupport` entry;
+1. register the detector, inspector, normalizer, or integrity verifier in the
+   relevant explicit builder in `defaults.py`;
+2. add its component-to-platform ownership once in
+   `_DEFAULT_COMPONENT_PLATFORMS` in `support.py`;
+3. add or update the corresponding public runtime-support declaration in
+   `_IMPLEMENTED_SUPPORT`;
 4. run `default_support_drift()` and keep the result empty.
+
+The builders intentionally remain explicit because component construction may
+depend on runtime configuration. The private ownership table is declarative so
+component/platform ownership does not need to be repeated across separate maps.
 
 The support inventory is the source used by:
 
